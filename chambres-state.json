@@ -1,12 +1,24 @@
 {
-  "messageId": "1509989254414209035",
+  "messageIds": {
+    "maison1": "1509989254414209035",
+    "maison2": null
+  },
   "rooms": {
-    "double1": [],
-    "double2": [],
-    "double3": [],
-    "suite": [],
-    "penthouse": [
+    "m1_double1": [],
+    "m1_double2": [],
+    "m1_double3": [],
+    "m1_suite": [],
+    "m1_penthouse": [
       "1445816241116807238"
-    ]
+    ],
+    "m2_penthouse1": [],
+    "m2_penthouse2": [],
+    "m2_penthouse3": [],
+    "m2_penthouse4": [],
+    "m2_suite1": [],
+    "m2_suite2": [],
+    "m2_classique1": [],
+    "m2_classique2": [],
+    "m2_classique3": []
   }
 }

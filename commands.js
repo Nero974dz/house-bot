@@ -24,6 +24,19 @@ async function registerSlashCommands(client, token) {
         "Publier une mission sur le panel intérim (Fondation uniquement)"
       )
       .toJSON(),
+    new SlashCommandBuilder()
+      .setName("chat")
+      .setDescription(
+        "Envoyer un message via le bot (Fondation uniquement)"
+      )
+      .addStringOption((option) =>
+        option
+          .setName("message")
+          .setDescription("Texte à publier dans ce salon")
+          .setRequired(true)
+          .setMaxLength(2000)
+      )
+      .toJSON(),
   ];
 
   const rest = new REST({ version: "10" }).setToken(token);
@@ -36,7 +49,9 @@ async function registerSlashCommands(client, token) {
         console.warn(`Commandes slash (${guild.name}):`, err.message)
       );
   }
-  console.log("Commandes /achat, /report, /niveau, /crédit et /mission enregistrées");
+  console.log(
+    "Commandes /achat, /report, /niveau, /crédit, /mission et /chat enregistrées"
+  );
 }
 
 module.exports = { registerSlashCommands };

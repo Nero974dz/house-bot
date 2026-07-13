@@ -69,6 +69,7 @@ const { handleLevelMessage, handleLevelCommand, startLeaderboardScheduler } = re
 const { setupShopPanel, handleShopInteraction } = require("./boutique");
 const { setupCreditTable, handleCreditInteraction } = require("./credit");
 const { setupMissionPanel, handleMissionInteraction } = require("./missions");
+const { handleChatInteraction } = require("./chat");
 const { setupReopeningAnnouncement } = require("./annonce");
 
 const TICKET_TYPES = {
@@ -590,6 +591,7 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (await handleLevelCommand(interaction)) return;
   if (await handleCreditInteraction(interaction, client)) return;
+  if (await handleChatInteraction(interaction)) return;
   if (await handleMissionInteraction(interaction, client)) return;
   if (await handleShopInteraction(interaction, client)) return;
   if (await handleSignalementInteraction(interaction, client)) return;
