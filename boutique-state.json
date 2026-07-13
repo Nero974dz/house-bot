@@ -1,0 +1,23 @@
+{
+  "messageId": "1510778225415159808",
+  "items": [],
+  "pending": {},
+  "trades": {
+    "trade_1780268644437": {
+      "item": {
+        "name": "test",
+        "price": "1500",
+        "description": "Test"
+      },
+      "itemId": "item_1780266669870",
+      "buyerId": "1445816241116807238",
+      "sellerId": "1363979726418608148",
+      "buyerConfirmed": true,
+      "sellerConfirmed": true,
+      "channelId": "1510780936386773102",
+      "status": "closed",
+      "createdAt": 1780268644437,
+      "closedAt": 1780268679963
+    }
+  }
+}

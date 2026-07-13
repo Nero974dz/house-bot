@@ -1,0 +1,13 @@
+node_modules/
+.env
+.env.local
+*.log
+
+repas-state.json
+chambres-state.json
+budget-state.json
+signalements-state.json
+levels-state.json
+boutique-state.json
+credit-state.json
+missions-state.json

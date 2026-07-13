@@ -1,0 +1,23 @@
+{
+  "users": {
+    "1363979726418608148": {
+      "messages": 7,
+      "insults": [],
+      "earnedLevels": [],
+      "insultRoleGiven": false
+    },
+    "1445816241116807238": {
+      "messages": 34,
+      "insults": [
+        1780249921651,
+        1780249925030,
+        1780249937748,
+        1780249938572,
+        1780249939423
+      ],
+      "earnedLevels": [],
+      "insultRoleGiven": true
+    }
+  },
+  "leaderboardMessageId": "1510765190940201121"
+}
