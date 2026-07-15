@@ -4,7 +4,8 @@
     { "text": "Bilans budget et signalements envoyés automatiquement chaque dimanche dans le salon de logs.", "addedAt": 1752624000000 },
     { "text": "Correction de la persistance des données : les fichiers d'état ne sont plus perdus à chaque redémarrage du bot (synchronisation automatique avec GitHub).", "addedAt": 1752624000000 },
     { "text": "Nouveau système de banque personnelle (/bank, 500€ de départ), réutilisable pour un futur casino.", "addedAt": 1752624000000 },
-    { "text": "Nouveau système de paris sportifs Espagne - Argentine (/pari-setup) : mises, cotes, paiement automatique des gagnants.", "addedAt": 1752624000000 }
+    { "text": "Nouveau système de paris sportifs Espagne - Argentine (/pari-setup) : mises, cotes, paiement automatique des gagnants.", "addedAt": 1752624000000 },
+    { "text": "Nouvelle commande /send1 (Fondation) pour publier l'annonce des nouveautés (banque + correctifs).", "addedAt": 1752624000000 }
   ],
   "history": [
     {
