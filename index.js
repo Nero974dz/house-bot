@@ -79,6 +79,8 @@ const { setupMissionPanel, handleMissionInteraction } = require("./missions");
 const { handleChatInteraction } = require("./chat");
 const { pullAllStateFiles, GITHUB_ENABLED } = require("./storage");
 const { handleCorrectifInteraction } = require("./correctif");
+const { handleBankInteraction } = require("./bank");
+const { handleParisInteraction } = require("./paris");
 const { setupReopeningAnnouncement } = require("./annonce");
 
 const TICKET_TYPES = {
@@ -752,6 +754,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (await handleCreditInteraction(interaction, client)) return;
   if (await handleChatInteraction(interaction)) return;
   if (await handleCorrectifInteraction(interaction)) return;
+  if (await handleBankInteraction(interaction)) return;
+  if (await handleParisInteraction(interaction, client)) return;
   if (await handleMissionInteraction(interaction, client)) return;
   if (await handleShopInteraction(interaction, client)) return;
   if (await handleSignalementInteraction(interaction, client)) return;

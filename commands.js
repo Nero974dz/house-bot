@@ -1,4 +1,6 @@
 const { REST, Routes, SlashCommandBuilder } = require("discord.js");
+const { registerBankCommand } = require("./bank");
+const { registerParisCommand } = require("./paris");
 
 async function registerSlashCommands(client, token) {
   const commands = [
@@ -43,6 +45,8 @@ async function registerSlashCommands(client, token) {
         "Publier les correctifs apportés (Fondation uniquement)"
       )
       .toJSON(),
+    registerBankCommand(),
+    registerParisCommand(),
   ];
 
   const rest = new REST({ version: "10" }).setToken(token);
@@ -56,7 +60,7 @@ async function registerSlashCommands(client, token) {
       );
   }
   console.log(
-    "Commandes /achat, /report, /niveau, /crédit, /mission, /chat et /correctif enregistrées"
+    "Commandes /achat, /report, /niveau, /crédit, /mission, /chat, /correctif, /bank et /pari-setup enregistrées"
   );
 }
 
