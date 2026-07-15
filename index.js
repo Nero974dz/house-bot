@@ -41,6 +41,7 @@ const CLOSE_TICKET_BUTTON_ID = "close_ticket";
 const TICKET_STAFF_ROLE_ID = null;
 const TICKET_LOG_CHANNEL_ID = "1510687492896981102";
 const FONDATION_ROLE_ID = "1509974377267990659";
+const WEEKLY_BILAN_CHANNEL_ID = "1510687492896981102";
 
 const {
   CANDIDATURE_CATEGORY_ID,
@@ -62,17 +63,21 @@ const {
   startBudgetScheduler,
   handleBudgetInteraction,
   handleAchatDmMessage,
+  getWeeklyReportEmbed,
 } = require("./budget");
 const {
   setupSignalementPanel,
   handleSignalementInteraction,
+  getWeeklyBilanEmbed,
 } = require("./signalements");
+const cron = require("node-cron");
 const { registerSlashCommands } = require("./commands");
 const { handleLevelMessage, handleLevelCommand, startLeaderboardScheduler } = require("./levels");
 const { setupShopPanel, handleShopInteraction } = require("./boutique");
 const { setupCreditTable, handleCreditInteraction } = require("./credit");
 const { setupMissionPanel, handleMissionInteraction } = require("./missions");
 const { handleChatInteraction } = require("./chat");
+const { pullAllStateFiles, GITHUB_ENABLED } = require("./storage");
 const { handleCorrectifInteraction } = require("./correctif");
 const { setupReopeningAnnouncement } = require("./annonce");
 
@@ -653,8 +658,59 @@ const client = new Client({
   partials: [Partials.GuildMember, Partials.Channel, Partials.Message],
 });
 
+function startWeeklyBilanScheduler(client) {
+  cron.schedule(
+    "0 20 * * 0",
+    async () => {
+      const channel = await client.channels
+        .fetch(WEEKLY_BILAN_CHANNEL_ID)
+        .catch(() => null);
+      if (!channel?.isTextBased()) {
+        console.warn(`Salon bilans hebdo ${WEEKLY_BILAN_CHANNEL_ID} introuvable`);
+        return;
+      }
+
+      const guild = channel.guild;
+
+      try {
+        await channel.send({ embeds: [getWeeklyReportEmbed(guild)] });
+      } catch (err) {
+        console.error("Erreur bilan budget hebdo:", err.message);
+      }
+
+      try {
+        await channel.send({ embeds: [getWeeklyBilanEmbed()] });
+      } catch (err) {
+        console.error("Erreur bilan signalements hebdo:", err.message);
+      }
+    },
+    { timezone: "Europe/Paris" }
+  );
+}
+
 client.once("ready", async () => {
   console.log(`Connecté en tant que ${client.user.tag}`);
+
+  if (GITHUB_ENABLED) {
+    console.log("Synchronisation des données depuis GitHub…");
+    await pullAllStateFiles([
+      "budget-state.json",
+      "boutique-state.json",
+      "chambres-state.json",
+      "correctif-state.json",
+      "credit-state.json",
+      "levels-state.json",
+      "missions-state.json",
+      "signalements-state.json",
+      "repas-state.json",
+    ]);
+    console.log("Synchronisation terminée.");
+  } else {
+    console.warn(
+      "GITHUB_TOKEN / GITHUB_REPO non définis : les données ne survivront pas à un redémarrage."
+    );
+  }
+
   await setupRulesMessage(client);
   await setupTicketPanel(client);
 
@@ -672,6 +728,7 @@ client.once("ready", async () => {
   await setupChambresPanel(client);
   await setupBudgetPanel(client);
   startBudgetScheduler(client);
+  startWeeklyBilanScheduler(client);
   await setupSignalementPanel(client);
   await registerSlashCommands(client, TOKEN);
   startLeaderboardScheduler(client);

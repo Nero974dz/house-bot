@@ -1,6 +1,6 @@
 const fs = require("fs");
-const path = require("path");
 const cron = require("node-cron");
+const { getStatePath, persistState } = require("./storage");
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -20,7 +20,7 @@ const BUDGET_HISTORY_CHANNEL_ID = "1510687492896981102";
 const RESPONSABLE_ROLE_ID = "1509984877120847963";
 const GERANTS_ROLE_ID = "1509985135565475850";
 
-const STATE_FILE = path.join(__dirname, "budget-state.json");
+const STATE_FILE = getStatePath("budget-state.json");
 const DEFAULT_BUDGET = 3700;
 const ACHAT_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -76,6 +76,7 @@ function loadState() {
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  persistState("budget-state.json");
 }
 
 function getParisDate() {
@@ -1018,6 +1019,10 @@ async function handleBudgetInteraction(interaction) {
   return false;
 }
 
+function getWeeklyReportEmbed(guild) {
+  return buildReportEmbed(loadState(), guild);
+}
+
 module.exports = {
   setupBudgetPanel,
   startBudgetScheduler,
@@ -1025,4 +1030,5 @@ module.exports = {
   handleAchatDmMessage,
   updateBudgetPanel,
   registerBudgetCommands,
+  getWeeklyReportEmbed,
 };

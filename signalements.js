@@ -1,5 +1,5 @@
 const fs = require("fs");
-const path = require("path");
+const { getStatePath, persistState } = require("./storage");
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -18,8 +18,9 @@ const SIGNALEMENT_PANEL_CHANNEL_ID = "1510000880097693818";
 const SIGNALEMENT_LOG_CHANNEL_ID = "1510690066194763786";
 const SIGNALEMENT_DELETE_LOG_CHANNEL_ID = "1510687492896981102";
 const SIGNALEMENT_ADMIN_ROLE_ID = "1509979964651343993";
+const FONDATION_ROLE_ID = "1509974377267990659";
 
-const STATE_FILE = path.join(__dirname, "signalements-state.json");
+const STATE_FILE = getStatePath("signalements-state.json");
 
 const BTN = {
   ADD: "sig_add",
@@ -27,6 +28,7 @@ const BTN = {
   TABLE: "sig_table",
   RESET: "sig_reset",
   BILAN: "sig_bilan",
+  REVEAL: "sig_reveal",
 };
 const MODAL = {
   ADD: "sig_modal_add",
@@ -34,6 +36,7 @@ const MODAL = {
 };
 const SELECT = {
   DELETE: "sig_select_delete",
+  REVEAL: "sig_select_reveal",
 };
 
 function loadState() {
@@ -48,10 +51,15 @@ function loadState() {
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  persistState("signalements-state.json");
 }
 
 function isSignalementAdmin(member) {
   return member?.roles.cache.has(SIGNALEMENT_ADMIN_ROLE_ID) ?? false;
+}
+
+function isFondation(member) {
+  return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
 }
 
 function formatDateTime(ts) {
@@ -204,9 +212,47 @@ function buildPanelComponents() {
       new ButtonBuilder()
         .setCustomId(BTN.BILAN)
         .setLabel("Bilan")
-        .setStyle(ButtonStyle.Success)
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(BTN.REVEAL)
+        .setEmoji("👁️")
+        .setLabel("Voir l'auteur")
+        .setStyle(ButtonStyle.Secondary)
     ),
   ];
+}
+
+function buildRevealSelect(state) {
+  const sorted = sortReports(state.reports);
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(SELECT.REVEAL)
+      .setPlaceholder("Choisir un signalement")
+      .addOptions(
+        sorted.slice(0, 25).map((r) => ({
+          label: r.targetName.slice(0, 100),
+          value: r.id,
+          description: `${r.entries?.length || 0} signalement(s)`,
+        }))
+      )
+  );
+}
+
+function buildRevealEmbed(report) {
+  const target = report.targetId
+    ? `<@${report.targetId}> (\`${report.targetName}\`)`
+    : `**${report.targetName}**`;
+
+  const lines = (report.entries || []).map((e, i) => {
+    const author = e.authorId ? `<@${e.authorId}>` : "*Auteur non enregistré*";
+    return `**${i + 1}.** [${formatDateTime(e.createdAt)}] par ${author}\n${e.description}`;
+  });
+
+  return new EmbedBuilder()
+    .setColor(0x1abc9c)
+    .setTitle("👁️ Auteurs du signalement")
+    .setDescription(`Personne signalée : ${target}\n\n${lines.join("\n\n").slice(0, 4000) || "—"}`)
+    .setTimestamp();
 }
 
 function buildSignalementModal(customId, title) {
@@ -375,12 +421,12 @@ function buildDeleteSelect(state) {
   );
 }
 
-async function addReport(guild, personneRaw, comportement, client) {
+async function addReport(guild, personneRaw, comportement, client, authorId) {
   await guild.members.fetch().catch(() => null);
 
   const { targetId, targetName } = parseTarget(personneRaw, guild);
   const now = Date.now();
-  const entry = { description: comportement.trim(), createdAt: now };
+  const entry = { description: comportement.trim(), createdAt: now, authorId };
 
   const state = loadState();
   const existing = findExistingReport(state.reports, targetId, targetName);
@@ -563,6 +609,32 @@ async function handleSignalementInteraction(interaction, client) {
       });
       return true;
     }
+
+    if (interaction.customId === BTN.REVEAL) {
+      if (!isFondation(interaction.member)) {
+        await interaction.reply({
+          content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut voir les auteurs des signalements.`,
+          ephemeral: true,
+        });
+        return true;
+      }
+
+      const state = loadState();
+      if (!state.reports.length) {
+        await interaction.reply({
+          content: "ℹ️ Aucun signalement enregistré.",
+          ephemeral: true,
+        });
+        return true;
+      }
+
+      await interaction.reply({
+        content: "👁️ Sélectionnez le signalement dont vous voulez voir l'auteur :",
+        components: [buildRevealSelect(state)],
+        ephemeral: true,
+      });
+      return true;
+    }
   }
 
   if (
@@ -600,6 +672,38 @@ async function handleSignalementInteraction(interaction, client) {
     return true;
   }
 
+  if (
+    interaction.isStringSelectMenu() &&
+    interaction.customId === SELECT.REVEAL
+  ) {
+    if (!isFondation(interaction.member)) {
+      await interaction.reply({
+        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut voir les auteurs des signalements.`,
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const id = interaction.values[0];
+    const state = loadState();
+    const report = state.reports.find((r) => r.id === id);
+
+    if (!report) {
+      await interaction.update({
+        content: "❌ Signalement introuvable.",
+        components: [],
+      });
+      return true;
+    }
+
+    await interaction.update({
+      content: "",
+      embeds: [buildRevealEmbed(report)],
+      components: [],
+    });
+    return true;
+  }
+
   if (interaction.isModalSubmit()) {
     if (
       interaction.customId === MODAL.REPORT ||
@@ -628,7 +732,8 @@ async function handleSignalementInteraction(interaction, client) {
         interaction.guild,
         personne,
         comportement,
-        interaction.client
+        interaction.client,
+        interaction.user.id
       );
 
       if (interaction.customId === MODAL.REPORT) {
@@ -653,8 +758,13 @@ async function handleSignalementInteraction(interaction, client) {
   return false;
 }
 
+function getWeeklyBilanEmbed() {
+  return buildBilanEmbed(loadState());
+}
+
 module.exports = {
   setupSignalementPanel,
   registerSignalementCommands,
   handleSignalementInteraction,
+  getWeeklyBilanEmbed,
 };
