@@ -76,7 +76,7 @@ const { setupShopPanel, handleShopInteraction } = require("./boutique");
 const { setupCreditTable, handleCreditInteraction } = require("./credit");
 const { setupMissionPanel, handleMissionInteraction } = require("./missions");
 const { handleChatInteraction } = require("./chat");
-const { pullAllStateFiles, GITHUB_ENABLED, flushPendingWrites } = require("./storage");
+const { pullAllStateFiles, GITHUB_ENABLED, flushPendingWrites, testGithubWrite } = require("./storage");
 const { handleCorrectifInteraction } = require("./correctif");
 const { handleBankInteraction, startRichestLeaderboardScheduler } = require("./bank");
 const { handleParisInteraction } = require("./paris");
@@ -693,6 +693,8 @@ function startWeeklyBilanScheduler(client) {
 
 client.once("ready", async () => {
   console.log(`Connecté en tant que ${client.user.tag}`);
+
+  await testGithubWrite();
 
   if (GITHUB_ENABLED) {
     console.log("Synchronisation des données depuis GitHub…");

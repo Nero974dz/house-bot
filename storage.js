@@ -48,7 +48,14 @@ async function pullStateFile(filename) {
     const res = await fetch(`${githubUrl(filename)}?ref=${GITHUB_BRANCH}`, {
       headers: githubHeaders(),
     });
-    if (!res.ok) return; // 404 = pas encore de sauvegarde sur GitHub, on garde le défaut local
+    if (res.status === 404) return; // pas encore de sauvegarde, on garde le défaut local
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.warn(
+        `⚠️ Sync GitHub (pull ${filename}) a échoué — HTTP ${res.status} : ${body.slice(0, 200)}`
+      );
+      return;
+    }
     const json = await res.json();
     const content = Buffer.from(json.content, "base64").toString("utf8");
     fs.writeFileSync(getStatePath(filename), content);
@@ -65,32 +72,75 @@ async function pullAllStateFiles(filenames) {
 
 async function pushStateFile(filename) {
   if (!GITHUB_ENABLED) return;
+  const filePath = getStatePath(filename);
+  if (!fs.existsSync(filePath)) return;
+  const content = fs.readFileSync(filePath, "utf8");
+  const contentB64 = Buffer.from(content, "utf8").toString("base64");
+
+  let sha;
+  const existing = await fetch(`${githubUrl(filename)}?ref=${GITHUB_BRANCH}`, {
+    headers: githubHeaders(),
+  });
+  if (existing.ok) {
+    sha = (await existing.json()).sha;
+  }
+
+  const res = await fetch(githubUrl(filename), {
+    method: "PUT",
+    headers: githubHeaders(),
+    body: JSON.stringify({
+      message: `sync: ${filename}`,
+      content: contentB64,
+      branch: GITHUB_BRANCH,
+      ...(sha ? { sha } : {}),
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`HTTP ${res.status} : ${body.slice(0, 300)}`);
+  }
+}
+
+/**
+ * Test au démarrage : tente d'écrire un petit fichier témoin sur GitHub pour
+ * vérifier que le token a bien les droits d'écriture. Logge clairement le résultat.
+ */
+async function testGithubWrite() {
+  if (!GITHUB_ENABLED) {
+    console.warn(
+      "⚠️ GITHUB_TOKEN / GITHUB_REPO non définis : AUCUNE sauvegarde en ligne. Les données seront perdues à chaque redémarrage."
+    );
+    return;
+  }
   try {
-    const filePath = getStatePath(filename);
-    if (!fs.existsSync(filePath)) return;
-    const content = fs.readFileSync(filePath, "utf8");
-    const contentB64 = Buffer.from(content, "utf8").toString("base64");
-
+    const url = githubUrl(".sync-check");
     let sha;
-    const existing = await fetch(`${githubUrl(filename)}?ref=${GITHUB_BRANCH}`, {
-      headers: githubHeaders(),
-    });
-    if (existing.ok) {
-      sha = (await existing.json()).sha;
-    }
+    const existing = await fetch(`${url}?ref=${GITHUB_BRANCH}`, { headers: githubHeaders() });
+    if (existing.ok) sha = (await existing.json()).sha;
 
-    await fetch(githubUrl(filename), {
+    const res = await fetch(url, {
       method: "PUT",
       headers: githubHeaders(),
       body: JSON.stringify({
-        message: `sync: ${filename}`,
-        content: contentB64,
+        message: "sync: test écriture",
+        content: Buffer.from(`ok ${new Date().toISOString()}`).toString("base64"),
         branch: GITHUB_BRANCH,
         ...(sha ? { sha } : {}),
       }),
     });
+
+    if (res.ok) {
+      console.log(`✅ Sauvegarde GitHub opérationnelle (repo ${GITHUB_REPO}, branche ${GITHUB_BRANCH}).`);
+    } else {
+      const body = await res.text().catch(() => "");
+      console.error(
+        `❌ ÉCHEC écriture GitHub — HTTP ${res.status} : ${body.slice(0, 300)}\n` +
+          `➡️ Vérifiez : le token a la permission "Contents: Read and write", GITHUB_REPO="${GITHUB_REPO}" est correct, et la branche "${GITHUB_BRANCH}" existe.`
+      );
+    }
   } catch (err) {
-    console.warn(`Sync GitHub (push ${filename}):`, err.message);
+    console.error("❌ ÉCHEC test écriture GitHub :", err.message);
   }
 }
 
@@ -122,5 +172,6 @@ module.exports = {
   persistState,
   pullAllStateFiles,
   flushPendingWrites,
+  testGithubWrite,
   GITHUB_ENABLED,
 };
