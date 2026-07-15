@@ -37,6 +37,12 @@ async function registerSlashCommands(client, token) {
           .setMaxLength(2000)
       )
       .toJSON(),
+    new SlashCommandBuilder()
+      .setName("correctif")
+      .setDescription(
+        "Publier les correctifs apportés (Fondation uniquement)"
+      )
+      .toJSON(),
   ];
 
   const rest = new REST({ version: "10" }).setToken(token);
@@ -50,7 +56,7 @@ async function registerSlashCommands(client, token) {
       );
   }
   console.log(
-    "Commandes /achat, /report, /niveau, /crédit, /mission et /chat enregistrées"
+    "Commandes /achat, /report, /niveau, /crédit, /mission, /chat et /correctif enregistrées"
   );
 }
 
