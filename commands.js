@@ -15,10 +15,6 @@ async function registerSlashCommands(client, token) {
       .setDescription("Signaler anonymement le comportement d'un membre")
       .toJSON(),
     new SlashCommandBuilder()
-      .setName("niveau")
-      .setDescription("Voir votre progression et votre niveau sur le serveur")
-      .toJSON(),
-    new SlashCommandBuilder()
       .setName("crédit")
       .setDescription("Demander un crédit argent")
       .toJSON(),
@@ -65,7 +61,7 @@ async function registerSlashCommands(client, token) {
       );
   }
   console.log(
-    "Commandes /achat, /report, /niveau, /crédit, /mission, /chat, /correctif, /bank, /addmoney, /pari-setup, /send1 et /casino-setup enregistrées"
+    "Commandes /achat, /report, /crédit, /mission, /chat, /correctif, /bank, /addmoney, /pari-setup, /send1 et /casino-setup enregistrées"
   );
 }
 

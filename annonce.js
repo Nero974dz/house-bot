@@ -8,7 +8,6 @@ const ANNOUNCE_TITLE_MARKER = "Une nouvelle ère";
 const PANEL_LINKS = {
   boutique: "1510771583348641902",
   tickets: "1509976660966117537",
-  niveau: "1510693589070647416",
 };
 
 function buildReopeningEmbed(guild) {
@@ -29,7 +28,6 @@ function buildReopeningEmbed(guild) {
       {
         name: "⌨️ Nouvelles commandes",
         value:
-          "`/niveau` — Voir votre progression (salon dédié)\n" +
           "`/crédit` — Demander un crédit argent\n" +
           "`/achat` — Demande d'achat d'un produit\n" +
           "`/report` — Signalement anonyme d'un membre",
@@ -38,15 +36,13 @@ function buildReopeningEmbed(guild) {
         name: "📌 Salons & panels à connaître",
         value:
           `🛍️ **Boutique** — <#${PANEL_LINKS.boutique}> *(achats sécurisés middleman)*\n` +
-          `🎫 **Tickets** — <#${PANEL_LINKS.tickets}> *(question, candidature, report…)*\n` +
-          `📊 **Niveaux** — <#${PANEL_LINKS.niveau}> *(progression & classement)*`,
+          `🎫 **Tickets** — <#${PANEL_LINKS.tickets}> *(question, candidature, report…)*`,
       },
       {
         name: "✨ Ce qui vous attend",
         value:
           "• Candidatures guidées pas à pas, avec votes du staff\n" +
           "• Budget maison, chambres, repas du jour, hiérarchie à jour\n" +
-          "• Système de niveaux par l'activité sur le serveur\n" +
           "• Signalements anonymes et boutique avec middleman\n\n" +
           "*Prenez le temps de parcourir les salons, d'accepter le règlement si ce n'est pas déjà fait, " +
           "et de poser vos questions en ticket si besoin.*",

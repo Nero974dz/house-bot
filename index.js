@@ -72,12 +72,6 @@ const {
 } = require("./signalements");
 const cron = require("node-cron");
 const { registerSlashCommands } = require("./commands");
-const {
-  handleLevelMessage,
-  handleLevelCommand,
-  handleLeaderboardInteraction,
-  startLeaderboardScheduler,
-} = require("./levels");
 const { setupShopPanel, handleShopInteraction } = require("./boutique");
 const { setupCreditTable, handleCreditInteraction } = require("./credit");
 const { setupMissionPanel, handleMissionInteraction } = require("./missions");
@@ -708,10 +702,12 @@ client.once("ready", async () => {
       "chambres-state.json",
       "correctif-state.json",
       "credit-state.json",
-      "levels-state.json",
       "missions-state.json",
       "signalements-state.json",
       "repas-state.json",
+      "bank-state.json",
+      "paris-state.json",
+      "casino-state.json",
     ]);
     console.log("Synchronisation terminée.");
   } else {
@@ -740,7 +736,6 @@ client.once("ready", async () => {
   startWeeklyBilanScheduler(client);
   await setupSignalementPanel(client);
   await registerSlashCommands(client, TOKEN);
-  startLeaderboardScheduler(client);
   startRichestLeaderboardScheduler(client);
   await setupShopPanel(client);
   await setupCreditTable(client);
@@ -752,14 +747,9 @@ client.on(Events.MessageCreate, async (message) => {
   await handleAchatDmMessage(message, client).catch((err) =>
     console.error("MP achat:", err.message)
   );
-  await handleLevelMessage(message).catch((err) =>
-    console.error("Niveaux:", err.message)
-  );
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (await handleLevelCommand(interaction)) return;
-  if (await handleLeaderboardInteraction(interaction)) return;
   if (await handleCreditInteraction(interaction, client)) return;
   if (await handleChatInteraction(interaction)) return;
   if (await handleCorrectifInteraction(interaction)) return;
