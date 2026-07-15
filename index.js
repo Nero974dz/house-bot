@@ -72,12 +72,17 @@ const {
 } = require("./signalements");
 const cron = require("node-cron");
 const { registerSlashCommands } = require("./commands");
-const { handleLevelMessage, handleLevelCommand, startLeaderboardScheduler } = require("./levels");
+const {
+  handleLevelMessage,
+  handleLevelCommand,
+  handleLeaderboardInteraction,
+  startLeaderboardScheduler,
+} = require("./levels");
 const { setupShopPanel, handleShopInteraction } = require("./boutique");
 const { setupCreditTable, handleCreditInteraction } = require("./credit");
 const { setupMissionPanel, handleMissionInteraction } = require("./missions");
 const { handleChatInteraction } = require("./chat");
-const { pullAllStateFiles, GITHUB_ENABLED } = require("./storage");
+const { pullAllStateFiles, GITHUB_ENABLED, flushPendingWrites } = require("./storage");
 const { handleCorrectifInteraction } = require("./correctif");
 const { handleBankInteraction, startRichestLeaderboardScheduler } = require("./bank");
 const { handleParisInteraction } = require("./paris");
@@ -754,6 +759,7 @@ client.on(Events.MessageCreate, async (message) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (await handleLevelCommand(interaction)) return;
+  if (await handleLeaderboardInteraction(interaction)) return;
   if (await handleCreditInteraction(interaction, client)) return;
   if (await handleChatInteraction(interaction)) return;
   if (await handleCorrectifInteraction(interaction)) return;
@@ -1030,5 +1036,17 @@ client.on("guildMemberAdd", async (member) => {
     await refreshHierarchy(member.guild, client).catch(() => null);
   }
 });
+
+let shuttingDown = false;
+async function gracefulShutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Signal ${signal} reçu — attente de la fin des sauvegardes GitHub…`);
+  await flushPendingWrites();
+  console.log("Sauvegardes terminées, arrêt du bot.");
+  process.exit(0);
+}
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 
 client.login(TOKEN);

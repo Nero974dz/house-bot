@@ -1,11 +1,13 @@
 const fs = require("fs");
 const cron = require("node-cron");
-const { EmbedBuilder } = require("discord.js");
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js");
 const { getStatePath, persistState } = require("./storage");
 
 const LEVEL_CHANNEL_ID = "1510693589070647416";
 const LEADERBOARD_CHANNEL_ID = "1510702663535296623";
 const LEADERBOARD_TOP = 3;
+const FONDATION_ROLE_ID = "1509974377267990659";
+const BTN_REFRESH_LEADERBOARD = "levels_refresh_leaderboard";
 
 const INSULT_ROLE_ID = "1510692182099624058";
 const INSULT_THRESHOLD = 3;
@@ -198,6 +200,16 @@ function buildLeaderboardEmbed(guild, state) {
     .setTimestamp();
 }
 
+function buildLeaderboardRefreshRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(BTN_REFRESH_LEADERBOARD)
+      .setLabel("Actualiser")
+      .setEmoji("🔄")
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
 async function sendLeaderboard(guild, client, replacePrevious = false) {
   const channel = await client.channels
     .fetch(LEADERBOARD_CHANNEL_ID)
@@ -208,6 +220,7 @@ async function sendLeaderboard(guild, client, replacePrevious = false) {
 
   const state = loadState();
   const embed = buildLeaderboardEmbed(guild, state);
+  const components = [buildLeaderboardRefreshRow()];
 
   if (replacePrevious && state.leaderboardMessageId) {
     const old = await channel.messages
@@ -216,7 +229,7 @@ async function sendLeaderboard(guild, client, replacePrevious = false) {
     if (old) await old.delete().catch(() => null);
   }
 
-  const sent = await channel.send({ embeds: [embed] });
+  const sent = await channel.send({ embeds: [embed], components });
   state.leaderboardMessageId = sent.id;
   saveState(state);
 
@@ -372,9 +385,33 @@ async function handleLevelCommand(interaction) {
   return true;
 }
 
+async function handleLeaderboardInteraction(interaction) {
+  if (!interaction.isButton() || interaction.customId !== BTN_REFRESH_LEADERBOARD) {
+    return false;
+  }
+
+  if (!interaction.member?.roles.cache.has(FONDATION_ROLE_ID)) {
+    await interaction.reply({
+      content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut forcer l'actualisation.`,
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  await interaction.deferUpdate();
+
+  await interaction.guild.members.fetch().catch(() => null);
+  const state = loadState();
+  const embed = buildLeaderboardEmbed(interaction.guild, state);
+
+  await interaction.editReply({ embeds: [embed], components: [buildLeaderboardRefreshRow()] });
+  return true;
+}
+
 module.exports = {
   handleLevelMessage,
   handleLevelCommand,
+  handleLeaderboardInteraction,
   startLeaderboardScheduler,
   LEVEL_CHANNEL_ID,
   LEADERBOARD_CHANNEL_ID,

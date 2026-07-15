@@ -1,6 +1,13 @@
 const fs = require("fs");
 const cron = require("node-cron");
-const { EmbedBuilder, SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
+const {
+  EmbedBuilder,
+  SlashCommandBuilder,
+  PermissionFlagsBits,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require("discord.js");
 const { getStatePath, persistState } = require("./storage");
 
 const STATE_FILE = getStatePath("bank-state.json");
@@ -11,6 +18,7 @@ const FONDATION_ROLE_ID = "1509974377267990659";
 const RICHEST_CHANNEL_ID = "1510702663535296623";
 const RICHEST_TOP = 5;
 const RICHEST_TITLE = "💰 Classement — Les plus riches";
+const BTN_REFRESH_RICHEST = "bank_refresh_richest";
 
 function isFondation(member) {
   return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
@@ -159,6 +167,25 @@ async function handleBankInteraction(interaction, client) {
     return true;
   }
 
+  if (interaction.isButton() && interaction.customId === BTN_REFRESH_RICHEST) {
+    if (!isFondation(interaction.member)) {
+      await interaction.reply({
+        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut forcer l'actualisation.`,
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    await interaction.deferUpdate();
+    await interaction.guild.members.fetch().catch(() => null);
+
+    const state = loadState();
+    const embed = buildRichestEmbed(interaction.guild, state);
+
+    await interaction.editReply({ embeds: [embed], components: [buildRichestRefreshRow()] });
+    return true;
+  }
+
   return false;
 }
 
@@ -200,6 +227,16 @@ function buildRichestEmbed(guild, state) {
     .setTimestamp();
 }
 
+function buildRichestRefreshRow() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(BTN_REFRESH_RICHEST)
+      .setLabel("Actualiser")
+      .setEmoji("🔄")
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
 async function sendRichestLeaderboard(guild, client, replacePrevious = false) {
   const channel = await client.channels.fetch(RICHEST_CHANNEL_ID).catch(() => null);
   if (!channel?.isTextBased()) return false;
@@ -208,13 +245,14 @@ async function sendRichestLeaderboard(guild, client, replacePrevious = false) {
 
   const state = loadState();
   const embed = buildRichestEmbed(guild, state);
+  const components = [buildRichestRefreshRow()];
 
   if (replacePrevious && state.richestMessageId) {
     const old = await channel.messages.fetch(state.richestMessageId).catch(() => null);
     if (old) await old.delete().catch(() => null);
   }
 
-  const sent = await channel.send({ embeds: [embed] });
+  const sent = await channel.send({ embeds: [embed], components });
   state.richestMessageId = sent.id;
   saveState(state);
 

@@ -94,14 +94,33 @@ async function pushStateFile(filename) {
   }
 }
 
-/** À appeler juste après fs.writeFileSync dans chaque saveState(). Fire-and-forget. */
+const pendingWrites = new Set();
+
+/**
+ * À appeler juste après fs.writeFileSync dans chaque saveState(). Fire-and-forget,
+ * mais l'envoi est suivi dans `pendingWrites` pour pouvoir être attendu avant
+ * l'arrêt du processus (voir flushPendingWrites) — sinon un redémarrage juste
+ * après une écriture peut perdre le changement si l'envoi GitHub n'est pas terminé.
+ */
 function persistState(filename) {
-  pushStateFile(filename).catch(() => {});
+  const promise = pushStateFile(filename)
+    .catch((err) => console.warn(`Sync GitHub (push ${filename}):`, err.message))
+    .finally(() => pendingWrites.delete(promise));
+  pendingWrites.add(promise);
+}
+
+/** Attend que tous les envois GitHub en cours se terminent (avec un délai maximum). */
+async function flushPendingWrites(timeoutMs = 8000) {
+  if (pendingWrites.size === 0) return;
+  const all = Promise.allSettled([...pendingWrites]);
+  const timeout = new Promise((resolve) => setTimeout(resolve, timeoutMs));
+  await Promise.race([all, timeout]);
 }
 
 module.exports = {
   getStatePath,
   persistState,
   pullAllStateFiles,
+  flushPendingWrites,
   GITHUB_ENABLED,
 };
