@@ -1,116 +1,106 @@
-const {
-  EmbedBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  ActionRowBuilder,
-} = require("discord.js");
+const fs = require("fs");
+const path = require("path");
+const { EmbedBuilder } = require("discord.js");
 
 const FONDATION_ROLE_ID = "1509974377267990659";
 const CORRECTIF_CHANNEL_ID = "1527025330852991097";
 
-const MODAL_CORRECTIF = "correctif_modal";
+const STATE_FILE = path.join(__dirname, "correctif-state.json");
 
 function isFondation(member) {
   return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
 }
 
-function buildCorrectifModal() {
-  return new ModalBuilder()
-    .setCustomId(MODAL_CORRECTIF)
-    .setTitle("🛠️ Publier un correctif")
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("titre")
-          .setLabel("Titre (optionnel)")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(false)
-          .setMaxLength(100)
-          .setPlaceholder("Ex. Mise à jour du 15/07")
-      ),
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId("correctifs")
-          .setLabel("Correctifs apportés")
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(true)
-          .setMaxLength(4000)
-          .setPlaceholder("• Correction de...\n• Ajout de...\n• Amélioration de...")
-      )
-    );
+function loadState() {
+  try {
+    const data = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+    if (!Array.isArray(data.unreleased)) data.unreleased = [];
+    if (!Array.isArray(data.history)) data.history = [];
+    return data;
+  } catch {
+    return { unreleased: [], history: [] };
+  }
 }
 
-function buildCorrectifEmbed(titre, correctifs, author) {
+function saveState(state) {
+  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+}
+
+/** Appelé à chaque ajustement/fix pour l'ajouter au prochain /correctif. */
+function addCorrectifEntry(text) {
+  const state = loadState();
+  state.unreleased.push({ text, addedAt: Date.now() });
+  saveState(state);
+}
+
+function buildCorrectifEmbed(entries, author) {
+  const lines = entries.map((e) => `• ${e.text}`).join("\n");
   return new EmbedBuilder()
     .setColor(0x1abc9c)
-    .setTitle(`🛠️ ${titre || "Correctifs"}`)
-    .setDescription(correctifs)
+    .setTitle("🛠️ Correctifs")
+    .setDescription(lines.slice(0, 4000))
     .setFooter({ text: `Publié par ${author.tag}` })
     .setTimestamp();
 }
 
 async function handleCorrectifInteraction(interaction) {
   if (
-    interaction.isChatInputCommand() &&
-    interaction.commandName === "correctif"
+    !interaction.isChatInputCommand() ||
+    interaction.commandName !== "correctif"
   ) {
-    if (!isFondation(interaction.member)) {
-      await interaction.reply({
-        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut utiliser \`/correctif\`.`,
-        ephemeral: true,
-      });
-      return true;
-    }
-
-    await interaction.showModal(buildCorrectifModal());
-    return true;
+    return false;
   }
 
-  if (interaction.isModalSubmit() && interaction.customId === MODAL_CORRECTIF) {
-    if (!isFondation(interaction.member)) {
-      await interaction.reply({
-        content: "❌ Permission refusée.",
-        ephemeral: true,
-      });
-      return true;
-    }
-
-    const titre = interaction.fields.getTextInputValue("titre")?.trim();
-    const correctifs = interaction.fields.getTextInputValue("correctifs").trim();
-
-    if (!correctifs) {
-      await interaction.reply({
-        content: "❌ Le champ des correctifs ne peut pas être vide.",
-        ephemeral: true,
-      });
-      return true;
-    }
-
-    const channel = await interaction.guild.channels
-      .fetch(CORRECTIF_CHANNEL_ID)
-      .catch(() => null);
-
-    if (!channel?.isTextBased()) {
-      await interaction.reply({
-        content: "❌ Salon des correctifs introuvable. Contactez un admin.",
-        ephemeral: true,
-      });
-      return true;
-    }
-
-    await channel.send({
-      embeds: [buildCorrectifEmbed(titre, correctifs, interaction.user)],
-    });
-
+  if (!isFondation(interaction.member)) {
     await interaction.reply({
-      content: `✅ Correctif publié dans <#${CORRECTIF_CHANNEL_ID}>.`,
+      content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut utiliser \`/correctif\`.`,
       ephemeral: true,
     });
     return true;
   }
 
-  return false;
+  const state = loadState();
+  if (!state.unreleased.length) {
+    await interaction.reply({
+      content: "ℹ️ Aucun correctif en attente de publication.",
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  const channel = await interaction.guild.channels
+    .fetch(CORRECTIF_CHANNEL_ID)
+    .catch(() => null);
+
+  if (!channel?.isTextBased()) {
+    await interaction.reply({
+      content: "❌ Salon des correctifs introuvable. Contactez un admin.",
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  await channel.send({
+    embeds: [buildCorrectifEmbed(state.unreleased, interaction.user)],
+  });
+
+  state.history.push({
+    entries: state.unreleased,
+    publishedAt: Date.now(),
+    publishedBy: interaction.user.id,
+  });
+  state.unreleased = [];
+  saveState(state);
+
+  await interaction.reply({
+    content: `✅ ${state.history.at(-1).entries.length} correctif(s) publié(s) dans <#${CORRECTIF_CHANNEL_ID}>.`,
+    ephemeral: true,
+  });
+  return true;
 }
 
-module.exports = { handleCorrectifInteraction, CORRECTIF_CHANNEL_ID };
+module.exports = {
+  handleCorrectifInteraction,
+  addCorrectifEntry,
+  CORRECTIF_CHANNEL_ID,
+};
