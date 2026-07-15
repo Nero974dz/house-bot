@@ -428,6 +428,8 @@ async function finishMission(interaction, client, missionId) {
     return;
   }
 
+  await interaction.deferUpdate();
+
   mission.completedAt = Date.now();
   mission.status = "completed";
   saveState(state);
@@ -462,7 +464,7 @@ async function finishMission(interaction, client, missionId) {
     .setColor(0x95a5a6)
     .setTitle("✅ Mission terminée");
 
-  await interaction.update({
+  await interaction.editReply({
     embeds: [introEmbed],
     components: [buildTicketClosedRow(missionId)],
   });
@@ -662,6 +664,8 @@ async function handleMissionInteraction(interaction, client) {
       return true;
     }
 
+    await interaction.deferUpdate();
+
     try {
       mission.status = "taken";
       mission.takerId = interaction.user.id;
@@ -679,7 +683,7 @@ async function handleMissionInteraction(interaction, client) {
         buildMissionTakenLogEmbed(mission, ticketChannel)
       );
 
-      await interaction.update({
+      await interaction.editReply({
         content:
           `✅ Mission **${mission.title}** acceptée !\n` +
           `Ticket ouvert : ${ticketChannel}`,
@@ -704,9 +708,10 @@ async function handleMissionInteraction(interaction, client) {
       mission.takerId = null;
       mission.takenAt = null;
       saveState(state);
-      await interaction.reply({
+      await interaction.editReply({
         content: "❌ Impossible de créer le ticket. Contactez un admin.",
-        ephemeral: true,
+        embeds: [],
+        components: [],
       });
     }
     return true;

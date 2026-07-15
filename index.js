@@ -38,6 +38,7 @@ const TICKET_SELECT_MENU_ID = "ticket_open_menu";
 const CLOSE_TICKET_BUTTON_ID = "close_ticket";
 // Rôle staff pouvant voir tous les tickets (null = désactivé, admins Discord voient quand même)
 const TICKET_STAFF_ROLE_ID = null;
+const TICKET_LOG_CHANNEL_ID = "1510687492896981102";
 
 const {
   CANDIDATURE_CATEGORY_ID,
@@ -321,6 +322,49 @@ function getTicketTopic(ticketType, memberId) {
     : memberId;
 }
 
+function getTicketConfigFromChannel(channel) {
+  const prefix = channel.name.split("-")[0];
+  return Object.values(TICKET_TYPES).find((c) => c.prefix === prefix) || null;
+}
+
+async function sendTicketLog(guild, embed) {
+  const logChannel = await guild.channels.fetch(TICKET_LOG_CHANNEL_ID).catch(() => null);
+  if (!logChannel?.isTextBased()) {
+    console.warn(`Salon logs tickets ${TICKET_LOG_CHANNEL_ID} introuvable`);
+    return;
+  }
+  await logChannel.send({ embeds: [embed] }).catch(() => null);
+}
+
+function buildTicketOpenedLogEmbed(config, member, channel) {
+  return new EmbedBuilder()
+    .setColor(0xf1c40f)
+    .setTitle("📥 Ticket ouvert")
+    .addFields(
+      { name: "Type", value: `${config.emoji} ${config.label}`, inline: true },
+      { name: "Membre", value: `${member}`, inline: true },
+      { name: "Salon", value: `${channel}`, inline: true }
+    )
+    .setTimestamp();
+}
+
+function buildTicketClosedLogEmbed(config, member, channel, closedBy) {
+  return new EmbedBuilder()
+    .setColor(0x95a5a6)
+    .setTitle("🔒 Ticket fermé")
+    .addFields(
+      {
+        name: "Type",
+        value: config ? `${config.emoji} ${config.label}` : "Inconnu",
+        inline: true,
+      },
+      { name: "Membre", value: `${member}`, inline: true },
+      { name: "Salon", value: `#${channel.name}`, inline: true },
+      { name: "Fermé par", value: `${closedBy}`, inline: true }
+    )
+    .setTimestamp();
+}
+
 async function createTicketChannel(member, ticketType) {
   const config = TICKET_TYPES[ticketType];
   if (!config) throw new Error("Type de ticket invalide");
@@ -419,6 +463,8 @@ async function createTicketChannel(member, ticketType) {
       components: [buildCloseTicketRow()],
     });
   }
+
+  await sendTicketLog(guild, buildTicketOpenedLogEmbed(config, member, ticketChannel));
 
   return { channel: ticketChannel, config };
 }
@@ -736,6 +782,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     await interaction.reply({ content: "🔒 Fermeture du ticket dans 3 secondes…" });
+
+    const config = getTicketConfigFromChannel(channel);
+    await sendTicketLog(
+      interaction.guild,
+      buildTicketClosedLogEmbed(config, member, channel, interaction.user)
+    );
 
     setTimeout(async () => {
       try {
