@@ -295,8 +295,10 @@ function buildCloseTicketRow() {
   );
 }
 
-function findOpenTicket(guild, memberId) {
-  return guild.channels.cache.find(
+const MAX_OPEN_TICKETS_PER_MEMBER = 2;
+
+function getOpenTickets(guild, memberId) {
+  return guild.channels.cache.filter(
     (ch) =>
       (ch.parentId === TICKET_CATEGORY_ID ||
         ch.parentId === CANDIDATURE_CATEGORY_ID) &&
@@ -324,9 +326,9 @@ async function createTicketChannel(member, ticketType) {
   if (!config) throw new Error("Type de ticket invalide");
 
   const guild = member.guild;
-  const existing = findOpenTicket(guild, member.id);
-  if (existing) {
-    return { existing, config };
+  const openTickets = getOpenTickets(guild, member.id);
+  if (openTickets.size >= MAX_OPEN_TICKETS_PER_MEMBER) {
+    return { limitReached: true, tickets: openTickets, config };
   }
 
   const channelName = `${config.prefix}-${slugifyUsername(member.user.username)}`.slice(
@@ -675,9 +677,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
       const result = await createTicketChannel(member, ticketType);
 
-      if (result.existing) {
+      if (result.limitReached) {
+        const list = result.tickets.map((ch) => `${ch}`).join(", ");
         await interaction.editReply({
-          content: `🦋 Vous avez déjà un ticket ouvert : ${result.existing}`,
+          content:
+            `🦋 Vous avez déjà **${MAX_OPEN_TICKETS_PER_MEMBER} tickets** ouverts (maximum atteint) : ${list}\n` +
+            `Fermez-en un avant d'en ouvrir un nouveau.`,
         });
         return;
       }

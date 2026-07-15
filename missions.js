@@ -17,6 +17,7 @@ const MISSION_PANEL_CHANNEL_ID = "1511131616406147172";
 const MISSION_TICKET_CATEGORY_ID = "1510693552299184218";
 const FONDATION_ROLE_ID = "1509974377267990659";
 const GERANT_BANCAIRE_ROLE_ID = "1509985135565475850";
+const MISSION_LOG_CHANNEL_ID = "1510687492896981102";
 
 const STATE_FILE = path.join(__dirname, "missions-state.json");
 
@@ -25,6 +26,7 @@ const SELECT_MISSION = "mission_select";
 const BTN_REFRESH = "mission_refresh";
 const TAKE_PREFIX = "mission_take_";
 const FIN_MISSION_PREFIX = "mission_fin_";
+const CLOSE_MISSION_PREFIX = "mission_close_";
 
 function loadState() {
   try {
@@ -70,6 +72,22 @@ function buildTicketFinishRow(missionId, disabled = false) {
       .setEmoji("🏁")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(disabled)
+  );
+}
+
+function buildTicketClosedRow(missionId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${FIN_MISSION_PREFIX}${missionId}`)
+      .setLabel("Fin de mission")
+      .setEmoji("🏁")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(true),
+    new ButtonBuilder()
+      .setCustomId(`${CLOSE_MISSION_PREFIX}${missionId}`)
+      .setLabel("Fermer le salon")
+      .setEmoji("🔒")
+      .setStyle(ButtonStyle.Danger)
   );
 }
 
@@ -248,6 +266,49 @@ function buildTicketIntroEmbed(mission) {
     .setTimestamp();
 }
 
+function buildMissionTakenLogEmbed(mission, ticketChannel) {
+  return new EmbedBuilder()
+    .setColor(0xf1c40f)
+    .setTitle("📥 Mission prise")
+    .setDescription(`**${mission.title}**`)
+    .addFields(
+      { name: "👤 Donneur", value: `<@${mission.posterId}>`, inline: true },
+      { name: "🙋 Intervenant", value: `<@${mission.takerId}>`, inline: true },
+      { name: "💶 Rémunération", value: `${mission.price}`, inline: true },
+      { name: "🕒 Prise le", value: formatDateTime(mission.takenAt), inline: true },
+      { name: "🎫 Ticket", value: `${ticketChannel}`, inline: true }
+    )
+    .setFooter({ text: `Réf. ${mission.id}` })
+    .setTimestamp(new Date(mission.takenAt));
+}
+
+function buildMissionCompletedLogEmbed(mission, ticketChannel, validator) {
+  return new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .setTitle("✅ Mission terminée")
+    .setDescription(`**${mission.title}**`)
+    .addFields(
+      { name: "👤 Donneur", value: `<@${mission.posterId}>`, inline: true },
+      { name: "🙋 Intervenant", value: `<@${mission.takerId}>`, inline: true },
+      { name: "💶 Rémunération", value: `${mission.price}`, inline: true },
+      { name: "🕒 Prise le", value: formatDateTime(mission.takenAt), inline: true },
+      { name: "🏁 Terminée le", value: formatDateTime(mission.completedAt), inline: true },
+      { name: "✅ Validée par", value: `<@${validator.id}>`, inline: true },
+      { name: "🎫 Ticket", value: `${ticketChannel}`, inline: true }
+    )
+    .setFooter({ text: `Réf. ${mission.id}` })
+    .setTimestamp(new Date(mission.completedAt));
+}
+
+async function sendMissionLog(guild, embed) {
+  const logChannel = await guild.channels.fetch(MISSION_LOG_CHANNEL_ID).catch(() => null);
+  if (!logChannel?.isTextBased()) {
+    console.warn(`Salon logs mission ${MISSION_LOG_CHANNEL_ID} introuvable`);
+    return;
+  }
+  await logChannel.send({ embeds: [embed] }).catch(() => null);
+}
+
 async function updateMissionPanel(client) {
   const channel = await client.channels
     .fetch(MISSION_PANEL_CHANNEL_ID)
@@ -371,6 +432,11 @@ async function finishMission(interaction, client, missionId) {
   mission.status = "completed";
   saveState(state);
 
+  await sendMissionLog(
+    interaction.guild,
+    buildMissionCompletedLogEmbed(mission, interaction.channel, interaction.user)
+  );
+
   const payoutMsg =
     `🏁 **Fin de mission** — **${mission.title}** est terminée.\n\n` +
     `<@${mission.takerId}>, contactez un **Gérant Bancaire** <@&${GERANT_BANCAIRE_ROLE_ID}> ` +
@@ -398,13 +464,47 @@ async function finishMission(interaction, client, missionId) {
 
   await interaction.update({
     embeds: [introEmbed],
-    components: [buildTicketFinishRow(missionId, true)],
+    components: [buildTicketClosedRow(missionId)],
   });
 
   await interaction.followUp({
     content: "✅ Fin de mission signalée — l'intervenant a été notifié.",
     ephemeral: true,
   });
+}
+
+async function closeMissionTicket(interaction, missionId) {
+  const state = loadState();
+  const mission = getMission(state, missionId);
+  const channel = interaction.channel;
+
+  if (!mission) {
+    await interaction.reply({ content: "❌ Mission introuvable.", ephemeral: true });
+    return;
+  }
+
+  const member = interaction.member;
+  const isParticipant =
+    member?.id === mission.posterId || member?.id === mission.takerId;
+  const isStaff = member?.permissions.has(PermissionFlagsBits.ManageChannels);
+
+  if (!isParticipant && !isStaff) {
+    await interaction.reply({
+      content: "❌ Seuls le donneur, l'intervenant ou le staff peuvent fermer ce salon.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.reply({ content: "🔒 Fermeture du salon dans 3 secondes…" });
+
+  setTimeout(async () => {
+    try {
+      await channel.delete("Mission terminée — salon fermé");
+    } catch (err) {
+      console.error("Erreur fermeture salon mission:", err.message);
+    }
+  }, 3000);
 }
 
 function isMissionInteraction(interaction) {
@@ -415,7 +515,8 @@ function isMissionInteraction(interaction) {
     id === SELECT_MISSION ||
     id === BTN_REFRESH ||
     id.startsWith(TAKE_PREFIX) ||
-    id.startsWith(FIN_MISSION_PREFIX)
+    id.startsWith(FIN_MISSION_PREFIX) ||
+    id.startsWith(CLOSE_MISSION_PREFIX)
   );
 }
 
@@ -534,6 +635,12 @@ async function handleMissionInteraction(interaction, client) {
     return true;
   }
 
+  if (interaction.isButton() && interaction.customId.startsWith(CLOSE_MISSION_PREFIX)) {
+    const missionId = interaction.customId.slice(CLOSE_MISSION_PREFIX.length);
+    await closeMissionTicket(interaction, missionId);
+    return true;
+  }
+
   if (interaction.isButton() && interaction.customId.startsWith(TAKE_PREFIX)) {
     const missionId = interaction.customId.slice(TAKE_PREFIX.length);
     const state = loadState();
@@ -567,6 +674,10 @@ async function handleMissionInteraction(interaction, client) {
       mission.ticketChannelId = ticketChannel.id;
       saveState(state);
       await updateMissionPanel(client);
+      await sendMissionLog(
+        interaction.guild,
+        buildMissionTakenLogEmbed(mission, ticketChannel)
+      );
 
       await interaction.update({
         content:
