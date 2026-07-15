@@ -131,6 +131,49 @@ function denyMessage() {
   return "❌ Seule l'administration peut gérer les chambres.";
 }
 
+function formatDateTime(ts) {
+  return new Date(ts).toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Paris",
+  });
+}
+
+function buildChambreLogEmbed(action, { staff, target, targetId, house, room }) {
+  const targetValue = target
+    ? `${target} (\`${target.user.tag}\`)`
+    : `<@${targetId}>`;
+
+  return new EmbedBuilder()
+    .setColor(action === "add" ? 0x57f287 : 0xed4245)
+    .setTitle(
+      action === "add"
+        ? "➕ Membre assigné à une chambre"
+        : "➖ Membre retiré d'une chambre"
+    )
+    .addFields(
+      { name: "Membre", value: targetValue, inline: true },
+      { name: "Maison", value: house.name, inline: true },
+      { name: "Chambre", value: room.name, inline: true },
+      {
+        name: "Effectué par",
+        value: `${staff} (\`${staff.user.tag}\`)`,
+        inline: true,
+      },
+      { name: "Date", value: formatDateTime(Date.now()), inline: true }
+    )
+    .setTimestamp();
+}
+
+async function sendChambreLog(client, embed) {
+  const channel = await client.channels.fetch(CHAMBRES_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) return;
+  await channel.send({ embeds: [embed] }).catch(() => null);
+}
+
 function formatOccupants(guild, userIds) {
   if (!userIds?.length) return "— **Libre**";
   const mentions = userIds
@@ -483,6 +526,16 @@ async function handleChambreInteraction(interaction) {
         .catch(() => null);
 
       await updateHousePanel(interaction.guild, interaction.client, houseId);
+      await sendChambreLog(
+        interaction.client,
+        buildChambreLogEmbed("remove", {
+          staff: interaction.member,
+          target,
+          targetId,
+          house: getHouse(houseId),
+          room,
+        })
+      );
 
       await interaction.update({
         content: `✅ ${target ?? `<@${targetId}>`} a été retiré de **${room.name}**.`,
@@ -548,6 +601,16 @@ async function handleChambreInteraction(interaction) {
       .catch(() => null);
 
     await updateHousePanel(interaction.guild, interaction.client, houseId);
+    await sendChambreLog(
+      interaction.client,
+      buildChambreLogEmbed("add", {
+        staff: interaction.member,
+        target,
+        targetId,
+        house: getHouse(houseId),
+        room,
+      })
+    );
 
     await interaction.update({
       content: `✅ ${target ?? `<@${targetId}>`} a été ajouté à **${room.name}**.`,

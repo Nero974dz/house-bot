@@ -327,6 +327,28 @@ function getTicketConfigFromChannel(channel) {
   return Object.values(TICKET_TYPES).find((c) => c.prefix === prefix) || null;
 }
 
+function getTicketOwnerId(channel) {
+  if (!channel.topic) return null;
+  if (channel.topic.startsWith("candidature:vote:")) {
+    return channel.topic.split(":")[2] || null;
+  }
+  if (channel.topic.startsWith("candidature:")) {
+    return channel.topic.slice("candidature:".length);
+  }
+  return channel.topic;
+}
+
+function formatDateTime(ts) {
+  return new Date(ts).toLocaleString("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Paris",
+  });
+}
+
 async function sendTicketLog(guild, embed) {
   const logChannel = await guild.channels.fetch(TICKET_LOG_CHANNEL_ID).catch(() => null);
   if (!logChannel?.isTextBased()) {
@@ -341,27 +363,56 @@ function buildTicketOpenedLogEmbed(config, member, channel) {
     .setColor(0xf1c40f)
     .setTitle("📥 Ticket ouvert")
     .addFields(
+      {
+        name: "Demandeur",
+        value: `${member} (\`${member.user.tag}\`)`,
+        inline: true,
+      },
       { name: "Type", value: `${config.emoji} ${config.label}`, inline: true },
-      { name: "Membre", value: `${member}`, inline: true },
-      { name: "Salon", value: `${channel}`, inline: true }
+      { name: "Salon", value: `${channel}`, inline: true },
+      {
+        name: "Date d'ouverture",
+        value: formatDateTime(channel.createdTimestamp),
+        inline: true,
+      }
     )
-    .setTimestamp();
+    .setFooter({ text: `ID salon : ${channel.id}` })
+    .setTimestamp(channel.createdAt);
 }
 
-function buildTicketClosedLogEmbed(config, member, channel, closedBy) {
+function buildTicketClosedLogEmbed(config, ownerMember, ownerId, channel, closedBy) {
   return new EmbedBuilder()
     .setColor(0x95a5a6)
     .setTitle("🔒 Ticket fermé")
     .addFields(
       {
+        name: "Demandeur",
+        value: ownerMember
+          ? `${ownerMember} (\`${ownerMember.user.tag}\`)`
+          : ownerId
+            ? `<@${ownerId}>`
+            : "Inconnu",
+        inline: true,
+      },
+      {
         name: "Type",
         value: config ? `${config.emoji} ${config.label}` : "Inconnu",
         inline: true,
       },
-      { name: "Membre", value: `${member}`, inline: true },
       { name: "Salon", value: `#${channel.name}`, inline: true },
-      { name: "Fermé par", value: `${closedBy}`, inline: true }
+      {
+        name: "Date d'ouverture",
+        value: formatDateTime(channel.createdTimestamp),
+        inline: true,
+      },
+      { name: "Date de fermeture", value: formatDateTime(Date.now()), inline: true },
+      {
+        name: "Fermé par",
+        value: `${closedBy} (\`${closedBy.tag}\`)`,
+        inline: true,
+      }
     )
+    .setFooter({ text: `ID salon : ${channel.id}` })
     .setTimestamp();
 }
 
@@ -784,9 +835,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.reply({ content: "🔒 Fermeture du ticket dans 3 secondes…" });
 
     const config = getTicketConfigFromChannel(channel);
+    const ownerId = getTicketOwnerId(channel);
+    const ownerMember =
+      ownerId && ownerId !== member?.id
+        ? await interaction.guild.members.fetch(ownerId).catch(() => null)
+        : member;
     await sendTicketLog(
       interaction.guild,
-      buildTicketClosedLogEmbed(config, member, channel, interaction.user)
+      buildTicketClosedLogEmbed(config, ownerMember, ownerId, channel, interaction.user)
     );
 
     setTimeout(async () => {
