@@ -186,6 +186,23 @@ async function handleBankInteraction(interaction, client) {
     return true;
   }
 
+  if (interaction.isChatInputCommand() && interaction.commandName === "classement-setup") {
+    if (!isFondation(interaction.member)) {
+      await interaction.reply({
+        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut republier le classement.`,
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    await sendRichestLeaderboard(interaction.guild, client, false);
+    await interaction.reply({
+      content: `✅ Classement des plus riches republié dans <#${RICHEST_CHANNEL_ID}>.`,
+      ephemeral: true,
+    });
+    return true;
+  }
+
   return false;
 }
 
@@ -331,6 +348,13 @@ function registerAddMoneyCommand() {
     .toJSON();
 }
 
+function registerClassementSetupCommand() {
+  return new SlashCommandBuilder()
+    .setName("classement-setup")
+    .setDescription("Republier le classement des plus riches (Fondation uniquement)")
+    .toJSON();
+}
+
 module.exports = {
   getBalance,
   addFunds,
@@ -342,6 +366,7 @@ module.exports = {
   handleBankInteraction,
   registerBankCommand,
   registerAddMoneyCommand,
+  registerClassementSetupCommand,
   startRichestLeaderboardScheduler,
   DEFAULT_BALANCE,
   TAX_RATE,
