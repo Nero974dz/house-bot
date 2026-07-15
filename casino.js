@@ -18,34 +18,46 @@ const FONDATION_ROLE_ID = "1509974377267990659";
 
 const STATE_FILE = getStatePath("casino-state.json");
 const JACKPOT_SEED = 1000;
-const SLOT_RAKE = 0.03;
+const BLACKJACK_RAKE = 0.03;
 const ROULETTE_RAKE = 0.03;
 const DUEL_RAKE = 0.05;
 const DUEL_TIMEOUT_MS = 5 * 60 * 1000;
+const BLACKJACK_TIMEOUT_MS = 5 * 60 * 1000;
 
-const SYMBOLS = [
-  { emoji: "🍒", weight: 30, multiplier: 1.5 },
-  { emoji: "🍋", weight: 25, multiplier: 2 },
-  { emoji: "🔔", weight: 20, multiplier: 3 },
-  { emoji: "⭐", weight: 15, multiplier: 5 },
-  { emoji: "💎", weight: 8, multiplier: 10 },
-  { emoji: "7️⃣", weight: 2, multiplier: "JACKPOT" },
-];
+/**
+ * Images utilisées dans les embeds. Uploadez une image dans un salon Discord,
+ * clic droit > Copier le lien, et collez l'URL ici (laisser null = pas d'image).
+ */
+const IMAGES = {
+  banner: null,
+  blackjack: "https://thumbs.dreamstime.com/b/playing-blackjack-table-4506947.jpg",
+  rouletteSpin: "https://www.goforquiz.com/wp-content/uploads/2023/10/casino.gif",
+  rouletteRouge: "https://media.giphy.com/media/l2SpYSNrKPONySXYY/giphy.gif",
+  rouletteNoir: "https://media1.tenor.com/m/A2DlRFtGcmMAAAAC/rulet.gif",
+  duel: null,
+};
 
 const RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 
+const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+const SUITS = ["♠️", "♥️", "♦️", "♣️"];
+
 const BTN = {
-  SLOTS: "casino_slots",
+  BLACKJACK: "casino_blackjack",
   ROULETTE: "casino_roulette",
   DUEL: "casino_duel",
+  BJ_HIT: "casino_bj_hit",
+  BJ_STAND: "casino_bj_stand",
 };
 const ROULETTE_COLOR_PREFIX = "casino_roulette_color_";
-const MODAL_SLOTS = "casino_modal_slots";
+const MODAL_BLACKJACK = "casino_modal_blackjack";
 const MODAL_ROULETTE_PREFIX = "casino_modal_roulette_";
 const MODAL_DUEL_PREFIX = "casino_modal_duel_";
 const SELECT_DUEL_OPPONENT = "casino_select_opponent";
 const DUEL_ACCEPT_PREFIX = "casino_duel_accept_";
 const DUEL_DECLINE_PREFIX = "casino_duel_decline_";
+
+const blackjackSessions = new Map();
 
 function isFondation(member) {
   return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
@@ -75,30 +87,27 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
-function pickWeightedSymbol() {
-  const total = SYMBOLS.reduce((s, sym) => s + sym.weight, 0);
-  let roll = Math.random() * total;
-  for (const sym of SYMBOLS) {
-    if (roll < sym.weight) return sym;
-    roll -= sym.weight;
-  }
-  return SYMBOLS[0];
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function addJackpot(amount) {
+  const state = loadState();
+  state.jackpot = round2(state.jackpot + amount);
+  saveState(state);
+  return state;
+}
+
 function buildCasinoEmbed(state) {
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setColor(0xe91e63)
     .setTitle("🎰 Casino de la Maison")
     .setDescription(
       "Bienvenue au casino ! Votre solde vient de **`/bank`**.\n\n" +
-        "🎰 **Machine à sous** — 3 symboles, plus rare = plus gros gain. Trois 7️⃣ font tomber le **jackpot** !\n" +
-        "🎡 **Roulette** — Rouge/Noir (x2) ou Vert (x14).\n" +
+        "🃏 **Blackjack** — battez le croupier sans dépasser 21. Blackjack naturel = x2,5 (et une chance de faire tomber le jackpot).\n" +
+        "🎡 **Roulette** — Rouge/Noir (x2) ou Vert (x14, avec une chance de jackpot en plus).\n" +
         "⚔️ **Défi** — Misez directement contre un autre membre, le gagnant rafle la mise (moins la taxe de la maison).\n\n" +
-        "*Chaque mise sur la machine à sous et la roulette alimente le jackpot progressif.*"
+        "*Chaque partie de blackjack et de roulette alimente le jackpot progressif.*"
     )
     .addFields({
       name: "💰 Jackpot progressif",
@@ -106,15 +115,18 @@ function buildCasinoEmbed(state) {
     })
     .setFooter({ text: "Jouez responsable — c'est pour le fun 🎲" })
     .setTimestamp();
+
+  if (IMAGES.banner) embed.setImage(IMAGES.banner);
+  return embed;
 }
 
 function buildCasinoComponents() {
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(BTN.SLOTS)
-        .setLabel("Machine à sous")
-        .setEmoji("🎰")
+        .setCustomId(BTN.BLACKJACK)
+        .setLabel("Blackjack")
+        .setEmoji("🃏")
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId(BTN.ROULETTE)
@@ -207,82 +219,209 @@ function buildRouletteColorRow() {
   );
 }
 
-async function playSlots(interaction, client, amount) {
-  const state = loadState();
+// --- Blackjack ---
 
-  if (!hasEnough(interaction.user.id, amount)) {
-    await interaction.editReply({ content: "❌ Solde insuffisant. Vérifiez `/bank`." });
-    return;
+function buildDeck() {
+  const deck = [];
+  for (const suit of SUITS) {
+    for (const rank of RANKS) {
+      deck.push({ rank, suit });
+    }
   }
-
-  removeFunds(interaction.user.id, amount);
-  state.jackpot = round2(state.jackpot + amount * SLOT_RAKE);
-  saveState(state);
-
-  await interaction.editReply({ content: "🎰 [ ❓ | ❓ | ❓ ] — Ça tourne…" });
-  await sleep(900);
-
-  const reels = [pickWeightedSymbol(), pickWeightedSymbol(), pickWeightedSymbol()];
-  await interaction.editReply({
-    content: `🎰 [ ${reels[0].emoji} | ❓ | ❓ ] — Ça tourne…`,
-  });
-  await sleep(900);
-  await interaction.editReply({
-    content: `🎰 [ ${reels[0].emoji} | ${reels[1].emoji} | ❓ ] — Ça tourne…`,
-  });
-  await sleep(900);
-
-  const allSame = reels[0].emoji === reels[1].emoji && reels[1].emoji === reels[2].emoji;
-  const twoSame =
-    reels[0].emoji === reels[1].emoji ||
-    reels[1].emoji === reels[2].emoji ||
-    reels[0].emoji === reels[2].emoji;
-
-  let resultText;
-
-  if (allSame && reels[0].multiplier === "JACKPOT") {
-    const won = state.jackpot;
-    addFunds(interaction.user.id, won);
-    state.jackpot = JACKPOT_SEED;
-    saveState(state);
-    await updateCasinoMessage(client, state);
-    resultText =
-      `🎰 [ ${reels.map((r) => r.emoji).join(" | ")} ]\n\n` +
-      `💥🎉 **JACKPOT !!!** 🎉💥\nVous remportez **${formatEuro(won)}** !`;
-  } else if (allSame) {
-    const won = round2(amount * reels[0].multiplier);
-    addFunds(interaction.user.id, won);
-    resultText =
-      `🎰 [ ${reels.map((r) => r.emoji).join(" | ")} ]\n\n` +
-      `✅ Trois **${reels[0].emoji}** ! Vous gagnez **${formatEuro(won)}** (x${reels[0].multiplier}).`;
-  } else if (twoSame) {
-    addFunds(interaction.user.id, amount);
-    resultText =
-      `🎰 [ ${reels.map((r) => r.emoji).join(" | ")} ]\n\n` +
-      `➖ Paire ! Mise remboursée (${formatEuro(amount)}).`;
-  } else {
-    resultText =
-      `🎰 [ ${reels.map((r) => r.emoji).join(" | ")} ]\n\n` +
-      `❌ Perdu. Mise : ${formatEuro(amount)}.`;
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
   }
-
-  await updateCasinoMessage(client, loadState());
-  await interaction.editReply({ content: resultText });
+  return deck;
 }
 
-async function playRoulette(interaction, client, color, amount) {
-  const state = loadState();
+function cardBaseValue(rank) {
+  if (rank === "A") return 11;
+  if (["J", "Q", "K"].includes(rank)) return 10;
+  return parseInt(rank, 10);
+}
 
+function handTotal(hand) {
+  let total = hand.reduce((s, c) => s + cardBaseValue(c.rank), 0);
+  let aces = hand.filter((c) => c.rank === "A").length;
+  while (total > 21 && aces > 0) {
+    total -= 10;
+    aces--;
+  }
+  return total;
+}
+
+function formatCard(card) {
+  return `${card.rank}${card.suit}`;
+}
+
+function formatHand(hand) {
+  return hand.map(formatCard).join(" ");
+}
+
+function buildBlackjackEmbed({ player, dealer, amount, hideDealer, status, resultLine }) {
+  const embed = new EmbedBuilder()
+    .setColor(status === "playing" ? 0x2c3e50 : status === "win" ? 0x2ecc71 : status === "push" ? 0xf1c40f : 0xe74c3c)
+    .setTitle("🃏 Blackjack")
+    .addFields(
+      {
+        name: "Votre main",
+        value: `${formatHand(player)}  =  **${handTotal(player)}**`,
+      },
+      {
+        name: "Main du croupier",
+        value: hideDealer
+          ? `${formatCard(dealer[0])} 🂠`
+          : `${formatHand(dealer)}  =  **${handTotal(dealer)}**`,
+      },
+      { name: "Mise", value: formatEuro(amount), inline: true }
+    )
+    .setTimestamp();
+
+  if (resultLine) embed.setDescription(resultLine);
+  if (IMAGES.blackjack) embed.setImage(IMAGES.blackjack);
+  return embed;
+}
+
+function buildBlackjackRow(disabled = false) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(BTN.BJ_HIT)
+      .setLabel("Tirer")
+      .setEmoji("➕")
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(disabled),
+    new ButtonBuilder()
+      .setCustomId(BTN.BJ_STAND)
+      .setLabel("Rester")
+      .setEmoji("✋")
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(disabled)
+  );
+}
+
+function clearBjSession(userId) {
+  const session = blackjackSessions.get(userId);
+  if (session?.timeout) clearTimeout(session.timeout);
+  blackjackSessions.delete(userId);
+}
+
+function scheduleBjTimeout(userId, respondTimeout) {
+  const session = blackjackSessions.get(userId);
+  if (!session) return;
+  session.timeout = setTimeout(async () => {
+    if (!blackjackSessions.has(userId)) return;
+    await respondTimeout(userId).catch(() => null);
+  }, BLACKJACK_TIMEOUT_MS);
+}
+
+/** Résout la partie (push/win/lose) et paie. Renvoie {embed, jackpotHit}. */
+async function settleBlackjack(client, userId) {
+  const session = blackjackSessions.get(userId);
+  const { player, dealer, amount } = session;
+  const playerTotal = handTotal(player);
+  const dealerTotal = handTotal(dealer);
+  const isNaturalBJ = player.length === 2 && playerTotal === 21;
+
+  let status;
+  let resultLine;
+  let payout = 0;
+  let jackpotHit = false;
+
+  if (playerTotal > 21) {
+    status = "lose";
+    resultLine = `💥 Vous dépassez 21. Perdu (${formatEuro(amount)}).`;
+  } else if (isNaturalBJ && dealerTotal === 21) {
+    status = "push";
+    payout = amount;
+    resultLine = `🤝 Égalité (blackjack des deux côtés). Mise remboursée (${formatEuro(amount)}).`;
+  } else if (isNaturalBJ) {
+    payout = round2(amount * 2.5);
+    status = "win";
+    resultLine = `🎉 **Blackjack naturel !** Vous gagnez **${formatEuro(payout)}** (x2,5).`;
+    if (Math.random() < 0.15) jackpotHit = true;
+  } else if (dealerTotal > 21) {
+    payout = round2(amount * 2);
+    status = "win";
+    resultLine = `✅ Le croupier dépasse 21. Vous gagnez **${formatEuro(payout)}**.`;
+  } else if (playerTotal > dealerTotal) {
+    payout = round2(amount * 2);
+    status = "win";
+    resultLine = `✅ Vous battez le croupier (${playerTotal} contre ${dealerTotal}). Vous gagnez **${formatEuro(payout)}**.`;
+  } else if (playerTotal === dealerTotal) {
+    status = "push";
+    payout = amount;
+    resultLine = `🤝 Égalité (${playerTotal} partout). Mise remboursée (${formatEuro(amount)}).`;
+  } else {
+    status = "lose";
+    resultLine = `❌ Le croupier gagne (${dealerTotal} contre ${playerTotal}). Perdu (${formatEuro(amount)}).`;
+  }
+
+  if (payout > 0) addFunds(userId, payout);
+
+  let state = loadState();
+  if (jackpotHit) {
+    const won = state.jackpot;
+    addFunds(userId, won);
+    state.jackpot = JACKPOT_SEED;
+    saveState(state);
+    resultLine += `\n\n💥🎉 **BONUS JACKPOT !!!** Vous remportez en plus **${formatEuro(won)}** !`;
+  }
+
+  clearBjSession(userId);
+  await updateCasinoMessage(client, loadState());
+
+  return buildBlackjackEmbed({ player, dealer, amount, hideDealer: false, status, resultLine });
+}
+
+async function startBlackjack(interaction, client, amount) {
   if (!hasEnough(interaction.user.id, amount)) {
     await interaction.editReply({ content: "❌ Solde insuffisant. Vérifiez `/bank`." });
     return;
   }
 
   removeFunds(interaction.user.id, amount);
-  state.jackpot = round2(state.jackpot + amount * ROULETTE_RAKE);
-  saveState(state);
+  addJackpot(round2(amount * BLACKJACK_RAKE));
 
-  await interaction.editReply({ content: "🎡 La bille tourne…" });
+  const deck = buildDeck();
+  const player = [deck.pop(), deck.pop()];
+  const dealer = [deck.pop(), deck.pop()];
+
+  blackjackSessions.set(interaction.user.id, { deck, player, dealer, amount });
+  scheduleBjTimeout(interaction.user.id, async (userId) => {
+    const embed = await settleBlackjack(client, userId);
+    await interaction.editReply({ embeds: [embed], components: [] }).catch(() => null);
+  });
+
+  if (handTotal(player) === 21) {
+    const embed = await settleBlackjack(client, interaction.user.id);
+    await interaction.editReply({ embeds: [embed], components: [] });
+    return;
+  }
+
+  await interaction.editReply({
+    embeds: [buildBlackjackEmbed({ player, dealer, amount, hideDealer: true, status: "playing" })],
+    components: [buildBlackjackRow()],
+  });
+}
+
+// --- Roulette ---
+
+async function playRoulette(interaction, client, color, amount) {
+  if (!hasEnough(interaction.user.id, amount)) {
+    await interaction.editReply({ content: "❌ Solde insuffisant. Vérifiez `/bank`." });
+    return;
+  }
+
+  removeFunds(interaction.user.id, amount);
+  addJackpot(round2(amount * ROULETTE_RAKE));
+
+  const spinEmbed = new EmbedBuilder()
+    .setColor(0x2c3e50)
+    .setTitle("🎡 Roulette")
+    .setDescription("La bille tourne…");
+  if (IMAGES.rouletteSpin) spinEmbed.setImage(IMAGES.rouletteSpin);
+  await interaction.editReply({ content: "", embeds: [spinEmbed] });
   await sleep(1200);
 
   const number = Math.floor(Math.random() * 37);
@@ -290,25 +429,41 @@ async function playRoulette(interaction, client, color, amount) {
   const colorEmoji = { rouge: "🔴", noir: "⚫", vert: "🟢" };
   const multiplier = { rouge: 2, noir: 2, vert: 14 }[color];
 
-  let resultText;
+  const embed = new EmbedBuilder()
+    .setColor(color === resultColor ? 0x2ecc71 : 0xe74c3c)
+    .setTitle("🎡 Roulette")
+    .setDescription(`La bille s'arrête sur **${number}** ${colorEmoji[resultColor]}`);
+
+  if (resultColor === "rouge" && IMAGES.rouletteRouge) embed.setImage(IMAGES.rouletteRouge);
+  else if (resultColor === "noir" && IMAGES.rouletteNoir) embed.setImage(IMAGES.rouletteNoir);
+
+  let jackpotHit = false;
   if (color === resultColor) {
     const won = round2(amount * multiplier);
     addFunds(interaction.user.id, won);
-    resultText =
-      `🎡 La bille s'arrête sur **${number}** ${colorEmoji[resultColor]}\n\n` +
-      `✅ Gagné ! Vous remportez **${formatEuro(won)}** (x${multiplier}).`;
+    embed.addFields({ name: "Résultat", value: `✅ Gagné ! Vous remportez **${formatEuro(won)}** (x${multiplier}).` });
+    if (resultColor === "vert" && Math.random() < 0.2) jackpotHit = true;
   } else {
-    resultText =
-      `🎡 La bille s'arrête sur **${number}** ${colorEmoji[resultColor]}\n\n` +
-      `❌ Perdu. Mise : ${formatEuro(amount)}.`;
+    embed.addFields({ name: "Résultat", value: `❌ Perdu. Mise : ${formatEuro(amount)}.` });
+  }
+
+  if (jackpotHit) {
+    const state = loadState();
+    const won = state.jackpot;
+    addFunds(interaction.user.id, won);
+    state.jackpot = JACKPOT_SEED;
+    saveState(state);
+    embed.addFields({ name: "💥 Bonus", value: `**JACKPOT !** Vous remportez en plus **${formatEuro(won)}** !` });
   }
 
   await updateCasinoMessage(client, loadState());
-  await interaction.editReply({ content: resultText });
+  await interaction.editReply({ content: "", embeds: [embed] });
 }
 
+// --- Duel PvP ---
+
 function buildDuelChallengeEmbed(duel) {
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setColor(0xf39c12)
     .setTitle("⚔️ Défi lancé !")
     .setDescription(
@@ -317,6 +472,8 @@ function buildDuelChallengeEmbed(duel) {
     )
     .setFooter({ text: `Expire dans 5 minutes • Réf. ${duel.id}` })
     .setTimestamp();
+  if (IMAGES.duel) embed.setThumbnail(IMAGES.duel);
+  return embed;
 }
 
 function buildDuelRow(duelId, disabled = false) {
@@ -354,8 +511,62 @@ async function handleCasinoInteraction(interaction, client) {
   }
 
   if (interaction.isButton()) {
-    if (interaction.customId === BTN.SLOTS) {
-      await interaction.showModal(buildAmountModal(MODAL_SLOTS, "🎰 Machine à sous"));
+    if (interaction.customId === BTN.BLACKJACK) {
+      if (blackjackSessions.has(interaction.user.id)) {
+        await interaction.reply({
+          content: "❌ Vous avez déjà une partie de blackjack en cours.",
+          ephemeral: true,
+        });
+        return true;
+      }
+      await interaction.showModal(buildAmountModal(MODAL_BLACKJACK, "🃏 Blackjack"));
+      return true;
+    }
+
+    if (interaction.customId === BTN.BJ_HIT) {
+      const session = blackjackSessions.get(interaction.user.id);
+      if (!session) {
+        await interaction.reply({ content: "❌ Aucune partie en cours.", ephemeral: true });
+        return true;
+      }
+
+      session.player.push(session.deck.pop());
+      const total = handTotal(session.player);
+
+      if (total > 21) {
+        const embed = await settleBlackjack(client, interaction.user.id);
+        await interaction.update({ embeds: [embed], components: [] });
+        return true;
+      }
+
+      await interaction.update({
+        embeds: [
+          buildBlackjackEmbed({
+            player: session.player,
+            dealer: session.dealer,
+            amount: session.amount,
+            hideDealer: true,
+            status: "playing",
+          }),
+        ],
+        components: [buildBlackjackRow()],
+      });
+      return true;
+    }
+
+    if (interaction.customId === BTN.BJ_STAND) {
+      const session = blackjackSessions.get(interaction.user.id);
+      if (!session) {
+        await interaction.reply({ content: "❌ Aucune partie en cours.", ephemeral: true });
+        return true;
+      }
+
+      while (handTotal(session.dealer) < 17) {
+        session.dealer.push(session.deck.pop());
+      }
+
+      const embed = await settleBlackjack(client, interaction.user.id);
+      await interaction.update({ embeds: [embed], components: [] });
       return true;
     }
 
@@ -451,6 +662,7 @@ async function handleCasinoInteraction(interaction, client) {
             `😔 <@${loserId}> repart bredouille.`
         )
         .setTimestamp();
+      if (IMAGES.duel) resultEmbed.setThumbnail(IMAGES.duel);
 
       await interaction.update({ embeds: [resultEmbed], content: "", components: [] });
       return true;
@@ -510,14 +722,14 @@ async function handleCasinoInteraction(interaction, client) {
   }
 
   if (interaction.isModalSubmit()) {
-    if (interaction.customId === MODAL_SLOTS) {
+    if (interaction.customId === MODAL_BLACKJACK) {
       const amount = parseAmount(interaction.fields.getTextInputValue("montant"));
       if (!amount || amount <= 0 || Number.isNaN(amount)) {
         await interaction.reply({ content: "❌ Montant invalide.", ephemeral: true });
         return true;
       }
       await interaction.deferReply({ ephemeral: true });
-      await playSlots(interaction, client, amount);
+      await startBlackjack(interaction, client, amount);
       return true;
     }
 
