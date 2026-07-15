@@ -16,6 +16,7 @@ const {
 
 const SIGNALEMENT_PANEL_CHANNEL_ID = "1510000880097693818";
 const SIGNALEMENT_LOG_CHANNEL_ID = "1510690066194763786";
+const SIGNALEMENT_DELETE_LOG_CHANNEL_ID = "1510687492896981102";
 const SIGNALEMENT_ADMIN_ROLE_ID = "1509979964651343993";
 
 const STATE_FILE = path.join(__dirname, "signalements-state.json");
@@ -293,6 +294,46 @@ function buildLogEmbed(report, entry, merged) {
     .setTimestamp(new Date(entry.createdAt));
 }
 
+function buildDeleteLogEmbed(report, deletedBy) {
+  const target = report.targetId
+    ? `<@${report.targetId}> (\`${report.targetName}\`)`
+    : `**${report.targetName}**`;
+
+  return new EmbedBuilder()
+    .setColor(0x95a5a6)
+    .setTitle("🗑️ Signalement supprimé")
+    .addFields(
+      { name: "Personne signalée", value: target, inline: true },
+      {
+        name: "Supprimé par",
+        value: `${deletedBy} (\`${deletedBy.tag}\`)`,
+        inline: true,
+      },
+      {
+        name: "Signalement(s) perdu(s)",
+        value: `${report.entries?.length || 0}`,
+        inline: true,
+      },
+      {
+        name: "Dernier motif",
+        value: (report.entries?.[report.entries.length - 1]?.description || "—").slice(0, 500),
+      },
+      { name: "Date de suppression", value: formatDateTime(Date.now()), inline: true }
+    )
+    .setTimestamp();
+}
+
+async function sendSignalementDeleteLog(guild, embed) {
+  const logChannel = await guild.channels
+    .fetch(SIGNALEMENT_DELETE_LOG_CHANNEL_ID)
+    .catch(() => null);
+  if (!logChannel?.isTextBased()) {
+    console.warn(`Salon logs suppression ${SIGNALEMENT_DELETE_LOG_CHANNEL_ID} introuvable`);
+    return;
+  }
+  await logChannel.send({ embeds: [embed] }).catch(() => null);
+}
+
 function buildBilanEmbed(state) {
   const sorted = sortReports(state.reports);
   const details = sorted.length
@@ -547,6 +588,10 @@ async function handleSignalementInteraction(interaction, client) {
     const removed = state.reports.splice(idx, 1)[0];
     saveState(state);
     await updateSignalementPanel(interaction.guild, client);
+    await sendSignalementDeleteLog(
+      interaction.guild,
+      buildDeleteLogEmbed(removed, interaction.user)
+    );
 
     await interaction.update({
       content: `✅ Signalement **${removed.targetName}** supprimé.`,

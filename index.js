@@ -10,6 +10,7 @@ const {
   PermissionFlagsBits,
   ChannelType,
   StringSelectMenuBuilder,
+  AuditLogEvent,
 } = require("discord.js");
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -39,6 +40,7 @@ const CLOSE_TICKET_BUTTON_ID = "close_ticket";
 // Rôle staff pouvant voir tous les tickets (null = désactivé, admins Discord voient quand même)
 const TICKET_STAFF_ROLE_ID = null;
 const TICKET_LOG_CHANNEL_ID = "1510687492896981102";
+const FONDATION_ROLE_ID = "1509974377267990659";
 
 const {
   CANDIDATURE_CATEGORY_ID,
@@ -852,6 +854,54 @@ client.on(Events.InteractionCreate, async (interaction) => {
         console.error("Erreur fermeture ticket:", err.message);
       }
     }, 3000);
+  }
+});
+
+client.on("messageDelete", async (message) => {
+  try {
+    if (message.channelId !== TICKET_LOG_CHANNEL_ID) return;
+    if (!message.guild) return;
+
+    let executor = null;
+    const auditLogs = await message.guild
+      .fetchAuditLogs({ type: AuditLogEvent.MessageDelete, limit: 5 })
+      .catch(() => null);
+    if (auditLogs) {
+      const entry = auditLogs.entries.find(
+        (e) =>
+          e.extra?.channel?.id === message.channelId &&
+          Date.now() - e.createdTimestamp < 10000
+      );
+      executor = entry?.executor ?? null;
+    }
+
+    const deletedTitle = message.embeds?.[0]?.title;
+    const deletedContent = message.content;
+
+    const embed = new EmbedBuilder()
+      .setColor(0xe74c3c)
+      .setTitle("⚠️ Message de logs supprimé")
+      .setDescription(
+        deletedTitle
+          ? `**Log supprimé :** ${deletedTitle}`
+          : deletedContent
+            ? `**Contenu supprimé :** ${deletedContent.slice(0, 500)}`
+            : "*Contenu indisponible (message non mis en cache).*"
+      )
+      .addFields({
+        name: "Supprimé par",
+        value: executor
+          ? `${executor} (\`${executor.tag}\`)`
+          : "Inconnu (voir le journal d'audit du serveur)",
+      })
+      .setTimestamp();
+
+    await message.channel.send({
+      content: `<@&${FONDATION_ROLE_ID}>`,
+      embeds: [embed],
+    });
+  } catch (err) {
+    console.error("Erreur détection suppression log:", err.message);
   }
 });
 
