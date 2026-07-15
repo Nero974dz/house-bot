@@ -203,8 +203,27 @@ async function updateMatchMessage(client, state) {
     msg = await channel.messages.fetch(state.messageId).catch(() => null);
   }
 
+  if (!msg) {
+    const messages = await channel.messages.fetch({ limit: 25 }).catch(() => null);
+    const candidates = messages?.filter(
+      (m) => m.author.id === client.user.id && m.embeds[0]?.title === `⚽ ${MATCH.competition}`
+    );
+
+    if (candidates?.size) {
+      const sorted = [...candidates.values()].sort((a, b) => b.createdTimestamp - a.createdTimestamp);
+      msg = sorted[0];
+
+      const duplicates = sorted.slice(1);
+      for (const dup of duplicates) {
+        await dup.delete().catch(() => null);
+      }
+    }
+  }
+
   if (msg) {
     await msg.edit({ embeds: [embed], components });
+    state.messageId = msg.id;
+    saveState(state);
   } else {
     const sent = await channel.send({ embeds: [embed], components });
     state.messageId = sent.id;
