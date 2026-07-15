@@ -1,11 +1,11 @@
 const fs = require("fs");
-const path = require("path");
 const { EmbedBuilder } = require("discord.js");
+const { getStatePath, persistState } = require("./storage");
 
 const FONDATION_ROLE_ID = "1509974377267990659";
 const CORRECTIF_CHANNEL_ID = "1527025330852991097";
 
-const STATE_FILE = path.join(__dirname, "correctif-state.json");
+const STATE_FILE = getStatePath("correctif-state.json");
 
 function isFondation(member) {
   return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
@@ -24,6 +24,7 @@ function loadState() {
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  persistState("correctif-state.json");
 }
 
 /** Appelé à chaque ajustement/fix pour l'ajouter au prochain /correctif. */

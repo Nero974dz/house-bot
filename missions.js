@@ -1,5 +1,5 @@
 const fs = require("fs");
-const path = require("path");
+const { getStatePath, persistState } = require("./storage");
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -19,7 +19,7 @@ const FONDATION_ROLE_ID = "1509974377267990659";
 const GERANT_BANCAIRE_ROLE_ID = "1509985135565475850";
 const MISSION_LOG_CHANNEL_ID = "1510687492896981102";
 
-const STATE_FILE = path.join(__dirname, "missions-state.json");
+const STATE_FILE = getStatePath("missions-state.json");
 
 const MODAL_MISSION = "mission_create_modal";
 const SELECT_MISSION = "mission_select";
@@ -40,6 +40,7 @@ function loadState() {
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  persistState("missions-state.json");
 }
 
 function isFondation(member) {

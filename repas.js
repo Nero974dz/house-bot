@@ -1,11 +1,11 @@
 const fs = require("fs");
-const path = require("path");
 const cron = require("node-cron");
 const { EmbedBuilder } = require("discord.js");
+const { getStatePath, persistState } = require("./storage");
 
 const REPAS_CHANNEL_ID = "1509983930294472817";
 const MEMBRE_ROLE_ID = "1509983439968010401";
-const STATE_FILE = path.join(__dirname, "repas-state.json");
+const STATE_FILE = getStatePath("repas-state.json");
 
 const MATIN = [
   "Tartines de campagne, beurre salé et confiture maison",
@@ -94,6 +94,7 @@ function loadState() {
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  persistState("repas-state.json");
 }
 
 function pickRandom(arr) {

@@ -1,5 +1,5 @@
 const fs = require("fs");
-const path = require("path");
+const { getStatePath, persistState } = require("./storage");
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -15,7 +15,7 @@ const CREDIT_CHANNEL_ID = "1511135082927100104";
 const CREDIT_LOG_CHANNEL_ID = "1510687492896981102";
 const GERANTS_ROLE_ID = "1509985135565475850";
 
-const STATE_FILE = path.join(__dirname, "credit-state.json");
+const STATE_FILE = getStatePath("credit-state.json");
 
 const SELECT_DURATION = "credit_select_duration";
 const MODAL_CREDIT = "credit_modal";
@@ -46,6 +46,7 @@ function loadState() {
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  persistState("credit-state.json");
 }
 
 function isGerant(member) {

@@ -1,7 +1,7 @@
 const fs = require("fs");
-const path = require("path");
 const cron = require("node-cron");
 const { EmbedBuilder } = require("discord.js");
+const { getStatePath, persistState } = require("./storage");
 
 const LEVEL_CHANNEL_ID = "1510693589070647416";
 const LEADERBOARD_CHANNEL_ID = "1510702663535296623";
@@ -18,7 +18,7 @@ const MESSAGE_LEVELS = [
   { count: 1000, roleId: "1510693310002364587", label: "Niveau IV" },
 ];
 
-const STATE_FILE = path.join(__dirname, "levels-state.json");
+const STATE_FILE = getStatePath("levels-state.json");
 
 const INSULT_PATTERNS = [
   /\bconnard\b/i,
@@ -65,6 +65,7 @@ function loadState() {
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  persistState("levels-state.json");
 }
 
 function getUserData(state, userId) {
