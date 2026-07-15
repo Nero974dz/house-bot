@@ -1,4 +1,5 @@
 const fs = require("fs");
+const cron = require("node-cron");
 const { EmbedBuilder, SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const { getStatePath, persistState } = require("./storage");
 
@@ -7,6 +8,9 @@ const DEFAULT_BALANCE = 500;
 const TAX_RATE = 0.25;
 const TRANSACTION_LOG_CHANNEL_ID = "1510687492896981102";
 const FONDATION_ROLE_ID = "1509974377267990659";
+const RICHEST_CHANNEL_ID = "1510702663535296623";
+const RICHEST_TOP = 5;
+const RICHEST_TITLE = "💰 Classement — Les plus riches";
 
 function isFondation(member) {
   return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
@@ -16,9 +20,10 @@ function loadState() {
   try {
     const data = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
     if (!data.balances || typeof data.balances !== "object") data.balances = {};
+    if (data.richestMessageId === undefined) data.richestMessageId = null;
     return data;
   } catch {
-    return { balances: {} };
+    return { balances: {}, richestMessageId: null };
   }
 }
 
@@ -157,6 +162,113 @@ async function handleBankInteraction(interaction, client) {
   return false;
 }
 
+const RICH_MEDALS = ["🥇", "🥈", "🥉", "🏅", "🏅"];
+
+function getSortedRichest(state) {
+  return Object.entries(state.balances)
+    .map(([userId, balance]) => ({ userId, balance }))
+    .sort((a, b) => b.balance - a.balance)
+    .slice(0, RICHEST_TOP);
+}
+
+function buildRichestEmbed(guild, state) {
+  const ranked = getSortedRichest(state);
+
+  let body;
+  if (!ranked.length) {
+    body = "*Aucun compte enregistré pour le moment.*";
+  } else {
+    body = ranked
+      .map((entry, i) => {
+        const medal = RICH_MEDALS[i] ?? `**${i + 1}.**`;
+        const member = guild.members.cache.get(entry.userId);
+        const name = member ? `${member}` : `<@${entry.userId}>`;
+        return `${medal} ${name} — **${formatEuro(entry.balance)}**`;
+      })
+      .join("\n");
+  }
+
+  return new EmbedBuilder()
+    .setColor(0xf1c40f)
+    .setTitle(RICHEST_TITLE)
+    .setDescription(
+      "Les membres avec le plus gros solde sur `/bank`.\n\n" + body
+    )
+    .setFooter({
+      text: `Top ${RICHEST_TOP} • Classement hebdomadaire (chaque dimanche)`,
+    })
+    .setTimestamp();
+}
+
+async function sendRichestLeaderboard(guild, client, replacePrevious = false) {
+  const channel = await client.channels.fetch(RICHEST_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) return false;
+
+  await guild.members.fetch().catch(() => null);
+
+  const state = loadState();
+  const embed = buildRichestEmbed(guild, state);
+
+  if (replacePrevious && state.richestMessageId) {
+    const old = await channel.messages.fetch(state.richestMessageId).catch(() => null);
+    if (old) await old.delete().catch(() => null);
+  }
+
+  const sent = await channel.send({ embeds: [embed] });
+  state.richestMessageId = sent.id;
+  saveState(state);
+
+  return true;
+}
+
+async function richestLeaderboardExists(channel, client, state) {
+  if (state.richestMessageId) {
+    const msg = await channel.messages.fetch(state.richestMessageId).catch(() => null);
+    if (msg) return true;
+  }
+
+  const messages = await channel.messages.fetch({ limit: 20 }).catch(() => null);
+  return (
+    messages?.some(
+      (m) => m.author.id === client.user.id && m.embeds[0]?.title === RICHEST_TITLE
+    ) ?? false
+  );
+}
+
+async function ensureRichestLeaderboard(client) {
+  for (const guild of client.guilds.cache.values()) {
+    const channel = await client.channels.fetch(RICHEST_CHANNEL_ID).catch(() => null);
+    if (!channel?.isTextBased()) continue;
+
+    const state = loadState();
+    const exists = await richestLeaderboardExists(channel, client, state);
+
+    if (!exists) {
+      await sendRichestLeaderboard(guild, client, false);
+      console.log(`[${guild.name}] Classement des plus riches publié (aucun tableau détecté)`);
+    }
+  }
+}
+
+function startRichestLeaderboardScheduler(client) {
+  ensureRichestLeaderboard(client).catch((err) =>
+    console.error("Classement des plus riches (initial):", err.message)
+  );
+
+  cron.schedule(
+    "0 9 * * 0",
+    () => {
+      for (const guild of client.guilds.cache.values()) {
+        sendRichestLeaderboard(guild, client, true).catch((err) =>
+          console.error("Classement des plus riches (dimanche):", err.message)
+        );
+      }
+    },
+    { timezone: "Europe/Paris" }
+  );
+  console.log("Classement des plus riches : envoi programmé chaque dimanche à 9h00 (Paris)");
+}
+
 function registerBankCommand() {
   return new SlashCommandBuilder()
     .setName("bank")
@@ -192,6 +304,7 @@ module.exports = {
   handleBankInteraction,
   registerBankCommand,
   registerAddMoneyCommand,
+  startRichestLeaderboardScheduler,
   DEFAULT_BALANCE,
   TAX_RATE,
   TRANSACTION_LOG_CHANNEL_ID,

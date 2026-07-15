@@ -79,7 +79,7 @@ const { setupMissionPanel, handleMissionInteraction } = require("./missions");
 const { handleChatInteraction } = require("./chat");
 const { pullAllStateFiles, GITHUB_ENABLED } = require("./storage");
 const { handleCorrectifInteraction } = require("./correctif");
-const { handleBankInteraction } = require("./bank");
+const { handleBankInteraction, startRichestLeaderboardScheduler } = require("./bank");
 const { handleParisInteraction } = require("./paris");
 const { handleSend1Interaction } = require("./send1");
 const { handleCasinoInteraction } = require("./casino");
@@ -736,6 +736,7 @@ client.once("ready", async () => {
   await setupSignalementPanel(client);
   await registerSlashCommands(client, TOKEN);
   startLeaderboardScheduler(client);
+  startRichestLeaderboardScheduler(client);
   await setupShopPanel(client);
   await setupCreditTable(client);
   await setupMissionPanel(client);
