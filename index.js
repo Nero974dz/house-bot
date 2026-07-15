@@ -82,6 +82,7 @@ const { handleCorrectifInteraction } = require("./correctif");
 const { handleBankInteraction } = require("./bank");
 const { handleParisInteraction } = require("./paris");
 const { handleSend1Interaction } = require("./send1");
+const { handleCasinoInteraction } = require("./casino");
 const { setupReopeningAnnouncement } = require("./annonce");
 
 const TICKET_TYPES = {
@@ -758,6 +759,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (await handleBankInteraction(interaction)) return;
   if (await handleParisInteraction(interaction, client)) return;
   if (await handleSend1Interaction(interaction)) return;
+  if (await handleCasinoInteraction(interaction, client)) return;
   if (await handleMissionInteraction(interaction, client)) return;
   if (await handleShopInteraction(interaction, client)) return;
   if (await handleSignalementInteraction(interaction, client)) return;
