@@ -10,6 +10,7 @@ const {
 } = require("discord.js");
 
 const CHAMBRES_CHANNEL_ID = "1509983864624386048";
+const CHAMBRE_LOG_CHANNEL_ID = "1510687492896981102";
 const CHAMBRE_AJOUT_PREFIX = "chambre_ajout:";
 const CHAMBRE_RETRAIT_PREFIX = "chambre_retrait:";
 const CHAMBRE_SELECT_ROOM_PREFIX = "chambre_select_room:";
@@ -169,8 +170,11 @@ function buildChambreLogEmbed(action, { staff, target, targetId, house, room }) 
 }
 
 async function sendChambreLog(client, embed) {
-  const channel = await client.channels.fetch(CHAMBRES_CHANNEL_ID).catch(() => null);
-  if (!channel?.isTextBased()) return;
+  const channel = await client.channels.fetch(CHAMBRE_LOG_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) {
+    console.warn(`Salon logs chambres ${CHAMBRE_LOG_CHANNEL_ID} introuvable`);
+    return;
+  }
   await channel.send({ embeds: [embed] }).catch(() => null);
 }
 
