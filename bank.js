@@ -1,9 +1,16 @@
 const fs = require("fs");
-const { EmbedBuilder, SlashCommandBuilder } = require("discord.js");
+const { EmbedBuilder, SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const { getStatePath, persistState } = require("./storage");
 
 const STATE_FILE = getStatePath("bank-state.json");
 const DEFAULT_BALANCE = 500;
+const TAX_RATE = 0.25;
+const TRANSACTION_LOG_CHANNEL_ID = "1510687492896981102";
+const FONDATION_ROLE_ID = "1509974377267990659";
+
+function isFondation(member) {
+  return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
+}
 
 function loadState() {
   try {
@@ -20,6 +27,10 @@ function saveState(state) {
   persistState("bank-state.json");
 }
 
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
 function formatEuro(amount) {
   return (
     amount.toLocaleString("fr-FR", {
@@ -27,6 +38,13 @@ function formatEuro(amount) {
       maximumFractionDigits: 2,
     }) + " €"
   );
+}
+
+/** Applique la taxe de la maison (25%) sur un montant brut. */
+function applyTax(grossAmount) {
+  const tax = round2(grossAmount * TAX_RATE);
+  const net = round2(grossAmount - tax);
+  return { gross: round2(grossAmount), tax, net };
 }
 
 /** Crée le compte avec le solde de départ s'il n'existe pas encore. */
@@ -48,7 +66,7 @@ function getBalance(userId) {
 function addFunds(userId, amount) {
   const state = loadState();
   ensureAccount(state, userId);
-  state.balances[userId] = Math.round((state.balances[userId] + amount) * 100) / 100;
+  state.balances[userId] = round2(state.balances[userId] + amount);
   saveState(state);
   return state.balances[userId];
 }
@@ -70,17 +88,73 @@ function buildBalanceEmbed(user, balance) {
     .setTimestamp();
 }
 
-async function handleBankInteraction(interaction) {
-  if (!interaction.isChatInputCommand() || interaction.commandName !== "bank") {
-    return false;
+/** Log générique d'une transaction taxée, envoyé dans le salon de logs. */
+async function logTransaction(client, { type, from, to, gross, tax, net }) {
+  const channel = await client.channels.fetch(TRANSACTION_LOG_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) return;
+
+  const embed = new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .setTitle("💸 Transaction")
+    .addFields(
+      { name: "Type", value: type, inline: true },
+      { name: "Montant brut", value: formatEuro(gross), inline: true },
+      { name: "Taxe (25%)", value: formatEuro(tax), inline: true },
+      { name: "Montant net", value: formatEuro(net), inline: true },
+      ...(from ? [{ name: "De", value: `<@${from}>`, inline: true }] : []),
+      ...(to ? [{ name: "À", value: `<@${to}>`, inline: true }] : [])
+    )
+    .setTimestamp();
+
+  await channel.send({ embeds: [embed] }).catch(() => null);
+}
+
+async function handleBankInteraction(interaction, client) {
+  if (interaction.isChatInputCommand() && interaction.commandName === "bank") {
+    const balance = getBalance(interaction.user.id);
+    await interaction.reply({
+      embeds: [buildBalanceEmbed(interaction.user, balance)],
+      ephemeral: true,
+    });
+    return true;
   }
 
-  const balance = getBalance(interaction.user.id);
-  await interaction.reply({
-    embeds: [buildBalanceEmbed(interaction.user, balance)],
-    ephemeral: true,
-  });
-  return true;
+  if (interaction.isChatInputCommand() && interaction.commandName === "addmoney") {
+    if (!isFondation(interaction.member)) {
+      await interaction.reply({
+        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut utiliser \`/addmoney\`.`,
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const target = interaction.options.getUser("membre", true);
+    const amount = interaction.options.getNumber("montant", true);
+
+    if (amount <= 0) {
+      await interaction.reply({ content: "❌ Le montant doit être positif.", ephemeral: true });
+      return true;
+    }
+
+    const newBalance = addFunds(target.id, amount);
+
+    await logTransaction(client, {
+      type: "🏦 Ajout manuel (/addmoney)",
+      from: interaction.user.id,
+      to: target.id,
+      gross: amount,
+      tax: 0,
+      net: amount,
+    });
+
+    await interaction.reply({
+      content: `✅ **${formatEuro(amount)}** ajoutés au compte de ${target} (nouveau solde : **${formatEuro(newBalance)}**).`,
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  return false;
 }
 
 function registerBankCommand() {
@@ -90,13 +164,35 @@ function registerBankCommand() {
     .toJSON();
 }
 
+function registerAddMoneyCommand() {
+  return new SlashCommandBuilder()
+    .setName("addmoney")
+    .setDescription("Ajouter de l'argent sur le compte d'un membre (Fondation uniquement)")
+    .addUserOption((option) =>
+      option.setName("membre").setDescription("Membre à créditer").setRequired(true)
+    )
+    .addNumberOption((option) =>
+      option
+        .setName("montant")
+        .setDescription("Montant à ajouter (€)")
+        .setRequired(true)
+        .setMinValue(0.01)
+    )
+    .toJSON();
+}
+
 module.exports = {
   getBalance,
   addFunds,
   removeFunds,
   hasEnough,
   formatEuro,
+  applyTax,
+  logTransaction,
   handleBankInteraction,
   registerBankCommand,
+  registerAddMoneyCommand,
   DEFAULT_BALANCE,
+  TAX_RATE,
+  TRANSACTION_LOG_CHANNEL_ID,
 };

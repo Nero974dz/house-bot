@@ -1,5 +1,6 @@
 const fs = require("fs");
 const { getStatePath, persistState } = require("./storage");
+const { hasEnough, removeFunds, addFunds, applyTax, logTransaction, formatEuro: bankFormatEuro } = require("./bank");
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -70,6 +71,10 @@ function slugify(text) {
 
 function getItem(state, itemId) {
   return state.items.find((i) => i.id === itemId);
+}
+
+function parseAmount(str) {
+  return parseFloat(String(str).replace(",", ".").replace(/[^\d.]/g, ""));
 }
 
 function formatDateTime(ts) {
@@ -258,8 +263,10 @@ function buildSellerRequestRow(requestId) {
 }
 
 function buildTradeIntroEmbed(trade) {
-  const statusBuyer = trade.buyerConfirmed ? "✅ Confirmé" : "⏳ En attente";
+  const statusBuyer = trade.buyerConfirmed ? "✅ Payé" : "⏳ En attente";
   const statusSeller = trade.sellerConfirmed ? "✅ Confirmé" : "⏳ En attente";
+  const price = parseAmount(trade.item.price);
+  const { tax, net } = applyTax(price);
 
   return new EmbedBuilder()
     .setColor(0x8b0000)
@@ -270,11 +277,12 @@ function buildTradeIntroEmbed(trade) {
         `**Prix :** ${trade.item.price} €\n` +
         `**Description :** ${trade.item.description}\n\n` +
         `📋 **Étapes :**\n` +
-        `1️⃣ L'**acheteur** remet l'**argent** au middleman <@&${MIDDLEMAN_ROLE_ID}>\n` +
-        `2️⃣ Le **vendeur** remet l'**article** au middleman\n` +
+        `1️⃣ L'**acheteur** clique sur "Payer" — le bot débite son compte \`/bank\` automatiquement\n` +
+        `   *(le vendeur reçoit ${bankFormatEuro(net)} net, taxe de la maison : ${bankFormatEuro(tax)})*\n` +
+        `2️⃣ Le **vendeur** remet l'**article** au middleman <@&${MIDDLEMAN_ROLE_ID}>\n` +
         `3️⃣ Chacun **confirme** ci-dessous une fois l'étape effectuée\n` +
         `4️⃣ Le ticket se ferme automatiquement quand les deux ont validé\n\n` +
-        `💶 Acheteur : ${statusBuyer}\n` +
+        `💶 Paiement : ${statusBuyer}\n` +
         `📦 Vendeur : ${statusSeller}`
     )
     .setTimestamp();
@@ -284,7 +292,7 @@ function buildTradeConfirmRow(tradeId, trade) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`${TRADE_BUYER_PREFIX}${tradeId}`)
-      .setLabel("J'ai donné l'argent")
+      .setLabel("Payer (/bank)")
       .setEmoji("💶")
       .setStyle(ButtonStyle.Primary)
       .setDisabled(trade.buyerConfirmed),
@@ -762,18 +770,43 @@ async function handleShopInteraction(interaction, client) {
 
     if (interaction.user.id !== trade.buyerId) {
       await interaction.reply({
-        content: "❌ Seul l'acheteur peut confirmer le paiement.",
+        content: "❌ Seul l'acheteur peut effectuer le paiement.",
         ephemeral: true,
       });
       return true;
     }
+
+    const price = parseAmount(trade.item.price);
+
+    if (!hasEnough(trade.buyerId, price)) {
+      await interaction.reply({
+        content: "❌ Solde insuffisant. Vérifiez votre solde avec `/bank`.",
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const { gross, tax, net } = applyTax(price);
+    removeFunds(trade.buyerId, gross);
+    addFunds(trade.sellerId, net);
+
+    await logTransaction(client, {
+      type: `🦋 Vente boutique — ${trade.item.name}`,
+      from: trade.buyerId,
+      to: trade.sellerId,
+      gross,
+      tax,
+      net,
+    });
 
     trade.buyerConfirmed = true;
     saveState(state);
     await updateTradeMessage(interaction.guild, tradeId, state);
 
     await interaction.reply({
-      content: "✅ Vous avez confirmé avoir **donné l'argent** au middleman.",
+      content:
+        `✅ Paiement effectué : **${bankFormatEuro(gross)}** débités de votre compte.\n` +
+        `Le vendeur reçoit **${bankFormatEuro(net)}** (taxe de la maison : ${bankFormatEuro(tax)}).`,
       ephemeral: true,
     });
 

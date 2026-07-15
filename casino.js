@@ -113,7 +113,6 @@ function buildCasinoEmbed(state) {
       name: "💰 Jackpot progressif",
       value: `**${formatEuro(state.jackpot)}**`,
     })
-    .setFooter({ text: "Jouez responsable — c'est pour le fun 🎲" })
     .setTimestamp();
 
   if (IMAGES.banner) embed.setImage(IMAGES.banner);
@@ -436,6 +435,7 @@ async function playRoulette(interaction, client, color, amount) {
 
   if (resultColor === "rouge" && IMAGES.rouletteRouge) embed.setImage(IMAGES.rouletteRouge);
   else if (resultColor === "noir" && IMAGES.rouletteNoir) embed.setImage(IMAGES.rouletteNoir);
+  else if (IMAGES.rouletteSpin) embed.setImage(IMAGES.rouletteSpin);
 
   let jackpotHit = false;
   if (color === resultColor) {

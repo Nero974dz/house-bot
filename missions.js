@@ -1,5 +1,6 @@
 const fs = require("fs");
 const { getStatePath, persistState } = require("./storage");
+const { addFunds, applyTax, logTransaction, formatEuro: bankFormatEuro } = require("./bank");
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -16,7 +17,6 @@ const {
 const MISSION_PANEL_CHANNEL_ID = "1511131616406147172";
 const MISSION_TICKET_CATEGORY_ID = "1510693552299184218";
 const FONDATION_ROLE_ID = "1509974377267990659";
-const GERANT_BANCAIRE_ROLE_ID = "1509985135565475850";
 const MISSION_LOG_CHANNEL_ID = "1510687492896981102";
 
 const STATE_FILE = getStatePath("missions-state.json");
@@ -45,6 +45,10 @@ function saveState(state) {
 
 function isFondation(member) {
   return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
+}
+
+function parseAmount(str) {
+  return parseFloat(String(str).replace(",", ".").replace(/[^\d.]/g, ""));
 }
 
 function slugify(text) {
@@ -440,10 +444,22 @@ async function finishMission(interaction, client, missionId) {
     buildMissionCompletedLogEmbed(mission, interaction.channel, interaction.user)
   );
 
+  const price = parseAmount(mission.price);
+  const { gross, tax, net } = applyTax(price);
+  addFunds(mission.takerId, net);
+
+  await logTransaction(client, {
+    type: `📋 Mission — ${mission.title}`,
+    to: mission.takerId,
+    gross,
+    tax,
+    net,
+  });
+
   const payoutMsg =
     `🏁 **Fin de mission** — **${mission.title}** est terminée.\n\n` +
-    `<@${mission.takerId}>, contactez un **Gérant Bancaire** <@&${GERANT_BANCAIRE_ROLE_ID}> ` +
-    `pour récupérer votre rémunération de **${mission.price}**.`;
+    `<@${mission.takerId}>, vous avez été payé automatiquement : **${bankFormatEuro(net)}** ` +
+    `(rémunération ${bankFormatEuro(gross)} − taxe de la maison ${bankFormatEuro(tax)}). Vérifiez avec \`/bank\`.`;
 
   await interaction.channel.send({ content: payoutMsg });
 
@@ -454,8 +470,8 @@ async function finishMission(interaction, client, missionId) {
     await taker
       .send(
         `🏁 La mission **${mission.title}** est terminée.\n\n` +
-          `Contactez un **Gérant Bancaire** <@&${GERANT_BANCAIRE_ROLE_ID}> ` +
-          `pour récupérer **${mission.price}**.\n` +
+          `Vous avez reçu **${bankFormatEuro(net)}** sur votre compte \`/bank\` ` +
+          `(rémunération ${bankFormatEuro(gross)} − taxe ${bankFormatEuro(tax)}).\n` +
           `Ticket : ${interaction.channel}`
       )
       .catch(() => null);

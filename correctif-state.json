@@ -6,7 +6,8 @@
     { "text": "Nouveau système de banque personnelle (/bank, 500€ de départ), réutilisable pour un futur casino.", "addedAt": 1752624000000 },
     { "text": "Nouveau système de paris sportifs Espagne - Argentine (/pari-setup) : mises, cotes, paiement automatique des gagnants.", "addedAt": 1752624000000 },
     { "text": "Nouvelle commande /send1 (Fondation) pour publier l'annonce des nouveautés (banque + correctifs).", "addedAt": 1752624000000 },
-    { "text": "Nouveau casino (/casino-setup) : machine à sous, roulette, défis entre membres (PvP), et un jackpot progressif partagé entre tous les jeux.", "addedAt": 1752624000000 }
+    { "text": "Casino (/casino-setup) : la machine à sous est remplacée par un vrai Blackjack (tirer/rester face au croupier), en plus de la roulette et des défis PvP, avec jackpot progressif partagé.", "addedAt": 1752624000000 },
+    { "text": "Taxe de 25% sur toutes les transactions Boutique et Mission : paiement désormais automatique via /bank (l'acheteur paie directement dans la boutique, l'intervenant est payé automatiquement en fin de mission). Nouvelle commande /addmoney (Fondation) pour créditer un compte manuellement. Toutes les transactions sont logguées dans le salon de logs.", "addedAt": 1752710400000 }
   ],
   "history": [
     {

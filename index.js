@@ -756,7 +756,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (await handleCreditInteraction(interaction, client)) return;
   if (await handleChatInteraction(interaction)) return;
   if (await handleCorrectifInteraction(interaction)) return;
-  if (await handleBankInteraction(interaction)) return;
+  if (await handleBankInteraction(interaction, client)) return;
   if (await handleParisInteraction(interaction, client)) return;
   if (await handleSend1Interaction(interaction)) return;
   if (await handleCasinoInteraction(interaction, client)) return;
