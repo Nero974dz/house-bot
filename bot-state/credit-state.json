@@ -29,6 +29,20 @@
       "pendingMessageId": "1511290196618907701",
       "removedAt": 1780390845479,
       "removedById": "1363979726418608148"
+    },
+    {
+      "id": "cred_1784221187583",
+      "userId": "320348102055690241",
+      "guildId": "1509966808223056022",
+      "amount": 2500,
+      "reason": "Casino",
+      "durationKey": "1",
+      "interestRate": 0.05,
+      "createdAt": 1784221187583,
+      "status": "pending",
+      "approvedAt": null,
+      "rejectedAt": null,
+      "validatorId": null
     }
   ]
 }
