@@ -550,21 +550,23 @@ async function startBlackjack(interaction, client, amount) {
 
 // --- Logs & annonces ---
 
-/** Log d'une partie (quelle que soit la somme) dans le salon de logs. */
+/** Log d'une VICTOIRE au casino (les pertes et remboursements ne sont pas loggués). */
 async function logCasinoPlay(client, { userId, game, stake, payout, detail }) {
+  const net = round2(payout - stake);
+  if (net <= 0) return; // on ne garde que les victoires
+
   const channel = await client.channels.fetch(CASINO_LOG_CHANNEL_ID).catch(() => null);
   if (!channel?.isTextBased()) return;
 
-  const net = round2(payout - stake);
   const embed = new EmbedBuilder()
-    .setColor(net > 0 ? 0x2ecc71 : net === 0 ? 0x95a5a6 : 0xe74c3c)
-    .setTitle("🎲 Partie de casino")
+    .setColor(0x2ecc71)
+    .setTitle("🏆 Victoire au casino")
     .addFields(
       { name: "Joueur", value: `<@${userId}>`, inline: true },
       { name: "Jeu", value: game, inline: true },
       { name: "Misé", value: formatEuro(stake), inline: true },
       { name: "Gagné", value: formatEuro(payout), inline: true },
-      { name: "Net", value: `${net >= 0 ? "🟢 +" : "🔴 "}${formatEuro(net)}`, inline: true },
+      { name: "Gain net", value: `🟢 +${formatEuro(net)}`, inline: true },
       { name: "Solde après", value: formatEuro(getBalance(userId)), inline: true }
     )
     .setTimestamp();
