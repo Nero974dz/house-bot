@@ -1,0 +1,133 @@
+{
+  "unreleased": [],
+  "history": [
+    {
+      "entries": [
+        {
+          "text": "Ajout d'un bouton \"Fermer le salon\" après la fin d'une mission.",
+          "addedAt": 1752606000000
+        },
+        {
+          "text": "Correction du bug empêchant le bouton de fin de mission de s'afficher (interaction expirée).",
+          "addedAt": 1752606000000
+        },
+        {
+          "text": "Logs des missions (prise et fin de mission) dans le salon de logs.",
+          "addedAt": 1752606000000
+        },
+        {
+          "text": "Possibilité d'ouvrir jusqu'à 2 tickets en même temps au lieu d'un seul.",
+          "addedAt": 1752606000000
+        },
+        {
+          "text": "Logs d'ouverture et de fermeture de tous les tickets (Question, Report, Identification, Candidature) avec dates et détails.",
+          "addedAt": 1752606000000
+        },
+        {
+          "text": "Logs des ajouts/retraits de membres dans les chambres.",
+          "addedAt": 1752606000000
+        },
+        {
+          "text": "Log quand un signalement est supprimé.",
+          "addedAt": 1752606000000
+        },
+        {
+          "text": "Alerte automatique (+ ping Fondation) si un message est supprimé dans le salon de logs.",
+          "addedAt": 1752606000000
+        },
+        {
+          "text": "Nouvelle commande /correctif pour publier automatiquement la liste des ajustements faits.",
+          "addedAt": 1752606000000
+        }
+      ],
+      "publishedAt": 1752614400000,
+      "publishedBy": null
+    },
+    {
+      "entries": [
+        {
+          "text": "Ajout d'un bouton \"👁️ Voir l'auteur\" (Fondation) pour voir qui a fait un signalement.",
+          "addedAt": 1752624000000
+        },
+        {
+          "text": "Bilans budget et signalements envoyés automatiquement chaque dimanche dans le salon de logs.",
+          "addedAt": 1752624000000
+        },
+        {
+          "text": "Correction de la persistance des données : les fichiers d'état ne sont plus perdus à chaque redémarrage du bot (synchronisation automatique avec GitHub).",
+          "addedAt": 1752624000000
+        },
+        {
+          "text": "Nouveau système de banque personnelle (/bank, 500€ de départ), réutilisable pour un futur casino.",
+          "addedAt": 1752624000000
+        },
+        {
+          "text": "Nouveau système de paris sportifs Espagne - Argentine (/pari-setup) : mises, cotes, paiement automatique des gagnants.",
+          "addedAt": 1752624000000
+        },
+        {
+          "text": "Nouvelle commande /send1 (Fondation) pour publier l'annonce des nouveautés (banque + correctifs).",
+          "addedAt": 1752624000000
+        },
+        {
+          "text": "Casino (/casino-setup) : la machine à sous est remplacée par un vrai Blackjack (tirer/rester face au croupier), en plus de la roulette et des défis PvP, avec jackpot progressif partagé.",
+          "addedAt": 1752624000000
+        },
+        {
+          "text": "Taxe de 25% sur toutes les transactions Boutique et Mission : paiement désormais automatique via /bank (l'acheteur paie directement dans la boutique, l'intervenant est payé automatiquement en fin de mission). Nouvelle commande /addmoney (Fondation) pour créditer un compte manuellement. Toutes les transactions sont logguées dans le salon de logs.",
+          "addedAt": 1752710400000
+        },
+        {
+          "text": "Nouveau classement \"Top 5 des plus riches\" publié automatiquement chaque dimanche (même salon que le classement d'activité).",
+          "addedAt": 1752710400000
+        },
+        {
+          "text": "Bouton \"Actualiser\" (Fondation) sur les classements activité et plus riches pour forcer la mise à jour sans attendre dimanche.",
+          "addedAt": 1752710400000
+        },
+        {
+          "text": "Correction d'une perte de données possible : le bot attend maintenant que la sauvegarde GitHub soit bien terminée avant de s'arrêter/redémarrer, pour ne plus perdre un changement récent (ex. budget modifié juste avant un redéploiement).",
+          "addedAt": 1752710400000
+        },
+        {
+          "text": "Suppression complète du système XP/niveaux (/niveau, rôles de niveau, classement \"Plus actifs\", détection d'insultes liée).",
+          "addedAt": 1752710400000
+        },
+        {
+          "text": "Correction : bank-state.json, paris-state.json et casino-state.json n'étaient jamais retéléchargés depuis GitHub au démarrage — c'était la vraie cause de la perte des soldes /bank après redémarrage.",
+          "addedAt": 1752710400000
+        },
+        {
+          "text": "Le bot démarre maintenant directement via node (au lieu de npm start) pour que Railway puisse lui envoyer le signal d'arrêt correctement et laisser les sauvegardes se terminer.",
+          "addedAt": 1752710400000
+        },
+        {
+          "text": "Nouvelle commande /classement-setup (Fondation) pour republier le classement des plus riches à tout moment, sans attendre un redémarrage du bot.",
+          "addedAt": 1752796800000
+        },
+        {
+          "text": "Casino Blackjack : les parties en cours sont maintenant sauvegardées et survivent à un redémarrage du bot (fini le \"Aucune partie en cours\" avec la mise perdue).",
+          "addedAt": 1752796800000
+        },
+        {
+          "text": "Défis du casino : on choisit désormais un mini-jeu contre l'adversaire — Pile ou face, Pierre-Feuille-Ciseaux, ou Puissance 4 (grille jouable au tour par tour). Le gagnant remporte les mises (moins la taxe), égalité = remboursement.",
+          "addedAt": 1752796800000
+        },
+        {
+          "text": "Correction majeure : les sauvegardes du bot vont désormais sur une branche GitHub séparée (bot-data), ce qui arrête la boucle de redéploiements Railway déclenchée par chaque sauvegarde.",
+          "addedAt": 1752796800000
+        },
+        {
+          "text": "Sauvegardes plus fiables : les écritures d'un même fichier sont sérialisées avec reprise automatique en cas de conflit (fini les erreurs 409).",
+          "addedAt": 1752796800000
+        },
+        {
+          "text": "Retour de la Machine à sous au casino (en plus du Blackjack, de la Roulette et des Défis) : 3 symboles, plus rare = plus gros gain, trois 7️⃣ font tomber le jackpot.",
+          "addedAt": 1752796800000
+        }
+      ],
+      "publishedAt": 1784167535809,
+      "publishedBy": "1445816241116807238"
+    }
+  ]
+}
