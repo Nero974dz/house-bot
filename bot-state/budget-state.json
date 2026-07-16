@@ -2,5 +2,18 @@
   "messageId": "1510685400857972776",
   "weekStart": "2026-07-13",
   "totalBudget": 5000,
-  "expenses": []
+  "expenses": [
+    {
+      "id": "achat_1784212649868_1057",
+      "type": "achat",
+      "amount": 90.8,
+      "label": "Abonnement Pass Navigo",
+      "reason": "Moyen de Transport",
+      "authorId": "1521792561293951057",
+      "authorTag": "madamebenshi",
+      "status": "pending",
+      "createdAt": 1784212649869,
+      "logMessageId": null
+    }
+  ]
 }
