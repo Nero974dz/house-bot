@@ -56,8 +56,9 @@
       "buyerConfirmed": true,
       "sellerConfirmed": true,
       "channelId": "1527300474183614607",
-      "status": "open",
-      "createdAt": 1784207208730
+      "status": "closed",
+      "createdAt": 1784207208730,
+      "closedAt": 1784207223149
     }
   }
 }
