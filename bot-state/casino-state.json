@@ -1,6 +1,16 @@
 {
   "messageId": "1527129379426275339",
   "jackpot": 1036,
-  "duels": [],
+  "duels": [
+    {
+      "id": "duel_1784166432061",
+      "challengerId": "1363979726418608148",
+      "opponentId": "1445816241116807238",
+      "amount": 50,
+      "game": "c4",
+      "status": "pending",
+      "createdAt": 1784166432061
+    }
+  ],
   "blackjack": {}
 }
