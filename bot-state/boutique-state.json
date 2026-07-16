@@ -16,14 +16,6 @@
       "price": "1600",
       "description": "Semi Neuf",
       "createdAt": 1784229006401
-    },
-    {
-      "id": "item_1784229056166",
-      "sellerId": "1390508824846139453",
-      "name": "Sandales Oran Blanc",
-      "price": "335 €",
-      "description": "Semi Neuf",
-      "createdAt": 1784229056166
     }
   ],
   "pending": {},
