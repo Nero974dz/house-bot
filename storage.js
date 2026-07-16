@@ -21,8 +21,11 @@ const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.DATA_DIR |
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPO;
-const GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
 const GITHUB_STATE_DIR = "bot-state";
+
+// Branche effective : détectée automatiquement au démarrage (defaut du repo),
+// sinon celle forcée par GITHUB_BRANCH, sinon "main".
+let GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
 
 const GITHUB_ENABLED = Boolean(GITHUB_TOKEN && GITHUB_REPO);
 
@@ -103,8 +106,11 @@ async function pushStateFile(filename) {
 }
 
 /**
- * Test au démarrage : tente d'écrire un petit fichier témoin sur GitHub pour
- * vérifier que le token a bien les droits d'écriture. Logge clairement le résultat.
+ * Diagnostic au démarrage :
+ * 1. Vérifie que le token peut LIRE le dépôt (GET /repos/OWNER/REPO).
+ * 2. Détecte automatiquement la branche par défaut du dépôt.
+ * 3. Teste l'ÉCRITURE d'un fichier témoin.
+ * Logge clairement quel maillon échoue.
  */
 async function testGithubWrite() {
   if (!GITHUB_ENABLED) {
@@ -113,6 +119,46 @@ async function testGithubWrite() {
     );
     return;
   }
+
+  // Étape 1 : lecture du dépôt + détection de la branche par défaut
+  try {
+    const repoRes = await fetch(`https://api.github.com/repos/${GITHUB_REPO}`, {
+      headers: githubHeaders(),
+    });
+    if (repoRes.status === 401) {
+      console.error(
+        "❌ GitHub : token INVALIDE (HTTP 401). Régénérez GITHUB_TOKEN et remettez-le dans Railway."
+      );
+      return;
+    }
+    if (repoRes.status === 404) {
+      console.error(
+        `❌ GitHub : le token ne peut pas accéder au dépôt "${GITHUB_REPO}" (HTTP 404).\n` +
+          `➡️ Causes possibles : le token n'appartient pas au propriétaire du dépôt, ou n'est pas autorisé sur CE dépôt.\n` +
+          `➡️ Régénérez un Fine-grained token sur le compte propriétaire, "Only select repositories" → house-bot-main, "Contents: Read and write".`
+      );
+      return;
+    }
+    if (!repoRes.ok) {
+      const body = await repoRes.text().catch(() => "");
+      console.error(`❌ GitHub : accès dépôt échoué HTTP ${repoRes.status} : ${body.slice(0, 200)}`);
+      return;
+    }
+
+    const repoInfo = await repoRes.json();
+    if (repoInfo.default_branch && repoInfo.default_branch !== GITHUB_BRANCH) {
+      console.log(
+        `ℹ️ Branche par défaut détectée : "${repoInfo.default_branch}" (au lieu de "${GITHUB_BRANCH}"). Utilisation de "${repoInfo.default_branch}".`
+      );
+      GITHUB_BRANCH = repoInfo.default_branch;
+    }
+    console.log(`ℹ️ Lecture du dépôt OK (${GITHUB_REPO}, branche ${GITHUB_BRANCH}).`);
+  } catch (err) {
+    console.error("❌ GitHub : erreur réseau lecture dépôt :", err.message);
+    return;
+  }
+
+  // Étape 2 : test d'écriture
   try {
     const url = githubUrl(".sync-check");
     let sha;
@@ -135,12 +181,12 @@ async function testGithubWrite() {
     } else {
       const body = await res.text().catch(() => "");
       console.error(
-        `❌ ÉCHEC écriture GitHub — HTTP ${res.status} : ${body.slice(0, 300)}\n` +
-          `➡️ Vérifiez : le token a la permission "Contents: Read and write", GITHUB_REPO="${GITHUB_REPO}" est correct, et la branche "${GITHUB_BRANCH}" existe.`
+        `❌ GitHub : LECTURE OK mais ÉCRITURE refusée — HTTP ${res.status} : ${body.slice(0, 200)}\n` +
+          `➡️ Le token peut lire mais pas écrire : mettez la permission "Contents" sur "Read and write" (pas "Read-only").`
       );
     }
   } catch (err) {
-    console.error("❌ ÉCHEC test écriture GitHub :", err.message);
+    console.error("❌ GitHub : erreur test écriture :", err.message);
   }
 }
 
