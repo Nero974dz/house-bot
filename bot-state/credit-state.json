@@ -42,7 +42,8 @@
       "status": "pending",
       "approvedAt": null,
       "rejectedAt": null,
-      "validatorId": null
+      "validatorId": null,
+      "pendingMessageId": "1527359105419706411"
     }
   ]
 }
