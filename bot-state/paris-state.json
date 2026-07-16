@@ -2,5 +2,13 @@
   "messageId": "1527108878758711379",
   "status": "open",
   "result": null,
-  "bets": []
+  "bets": [
+    {
+      "userId": "1363979726418608148",
+      "choice": "A",
+      "amount": 500,
+      "odds": 2.2,
+      "placedAt": 1784169544100
+    }
+  ]
 }
