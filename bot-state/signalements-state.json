@@ -1,4 +1,19 @@
 {
   "messageId": "1510690884931293386",
-  "reports": []
+  "reports": [
+    {
+      "id": "sig_1784168558806",
+      "targetId": null,
+      "targetName": "test",
+      "entries": [
+        {
+          "description": "test",
+          "createdAt": 1784168558806,
+          "authorId": "1363979726418608148"
+        }
+      ],
+      "createdAt": 1784168558806,
+      "updatedAt": 1784168558806
+    }
+  ]
 }
