@@ -1,6 +1,6 @@
 {
   "messageId": "1527312793718751454",
-  "jackpot": 3613.42,
+  "jackpot": 3638.42,
   "duels": [
     {
       "id": "duel_1784166432061",
@@ -81,12 +81,14 @@
       "opponentId": "1411724649036910673",
       "amount": 250,
       "game": "rps",
-      "status": "playing",
+      "status": "resolved",
       "createdAt": 1784218672270,
       "rpsChoices": {
         "1411724649036910673": "feuille",
         "1445816241116807238": "pierre"
-      }
+      },
+      "winnerId": "1411724649036910673",
+      "resolvedAt": 1784218698412
     }
   ],
   "blackjack": {}
