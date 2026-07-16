@@ -12,6 +12,8 @@ const { getStatePath, persistState } = require("./storage");
 
 const STATE_FILE = getStatePath("bank-state.json");
 const DEFAULT_BALANCE = 500;
+/** Compte "Banque de la Maison" : reçoit toutes les taxes (démarre à 0, pas à 500). */
+const TREASURY_ACCOUNT_ID = "1509969106999443678";
 const TAX_RATE = 0.25;
 const TRANSACTION_LOG_CHANNEL_ID = "1510687492896981102";
 const FONDATION_ROLE_ID = "1509974377267990659";
@@ -60,12 +62,26 @@ function applyTax(grossAmount) {
   return { gross: round2(grossAmount), tax, net };
 }
 
-/** Crée le compte avec le solde de départ s'il n'existe pas encore. */
+/** Crée le compte avec le solde de départ s'il n'existe pas encore.
+ *  La Banque de la Maison démarre à 0 (ce n'est pas un compte membre). */
 function ensureAccount(state, userId) {
   if (typeof state.balances[userId] !== "number") {
-    state.balances[userId] = DEFAULT_BALANCE;
+    state.balances[userId] = userId === TREASURY_ACCOUNT_ID ? 0 : DEFAULT_BALANCE;
   }
   return state.balances[userId];
+}
+
+/** Verse une taxe dans la Banque de la Maison. */
+function collectTax(taxAmount) {
+  if (!taxAmount || taxAmount <= 0) return;
+  return addFunds(TREASURY_ACCOUNT_ID, taxAmount);
+}
+
+function getTreasuryBalance() {
+  const state = loadState();
+  return typeof state.balances[TREASURY_ACCOUNT_ID] === "number"
+    ? state.balances[TREASURY_ACCOUNT_ID]
+    : 0;
 }
 
 function getBalance(userId) {
@@ -206,6 +222,50 @@ async function handleBankInteraction(interaction, client) {
     return true;
   }
 
+  if (interaction.isChatInputCommand() && interaction.commandName === "virement") {
+    const target = interaction.options.getUser("membre", true);
+    const amount = interaction.options.getNumber("montant", true);
+
+    if (amount <= 0) {
+      await interaction.reply({ content: "❌ Le montant doit être positif.", ephemeral: true });
+      return true;
+    }
+    if (target.id === interaction.user.id) {
+      await interaction.reply({ content: "❌ Vous ne pouvez pas vous virer de l'argent à vous-même.", ephemeral: true });
+      return true;
+    }
+    if (target.bot) {
+      await interaction.reply({ content: "❌ Vous ne pouvez pas envoyer d'argent à un bot.", ephemeral: true });
+      return true;
+    }
+    if (!hasEnough(interaction.user.id, amount)) {
+      await interaction.reply({ content: "❌ Solde insuffisant. Vérifiez votre solde avec `/bank`.", ephemeral: true });
+      return true;
+    }
+
+    const { gross, tax, net } = applyTax(amount);
+    removeFunds(interaction.user.id, gross);
+    addFunds(target.id, net);
+    collectTax(tax);
+
+    await logTransaction(client, {
+      type: "🔁 Virement (/virement)",
+      from: interaction.user.id,
+      to: target.id,
+      gross,
+      tax,
+      net,
+    });
+
+    await interaction.reply({
+      content:
+        `✅ Virement effectué : **${formatEuro(gross)}** débités de votre compte.\n` +
+        `${target} reçoit **${formatEuro(net)}** (taxe de la maison : ${formatEuro(tax)}).`,
+      ephemeral: true,
+    });
+    return true;
+  }
+
   if (interaction.isButton() && interaction.customId === BTN_REFRESH_RICHEST) {
     if (!isFondation(interaction.member)) {
       await interaction.reply({
@@ -249,6 +309,7 @@ const RICH_MEDALS = ["🥇", "🥈", "🥉", "🏅", "🏅"];
 
 function getSortedRichest(state) {
   return Object.entries(state.balances)
+    .filter(([userId]) => userId !== TREASURY_ACCOUNT_ID) // la Banque n'est pas un membre
     .map(([userId, balance]) => ({ userId, balance }))
     .sort((a, b) => b.balance - a.balance)
     .slice(0, RICHEST_TOP);
@@ -256,6 +317,10 @@ function getSortedRichest(state) {
 
 function buildRichestEmbed(guild, state) {
   const ranked = getSortedRichest(state);
+  const treasury =
+    typeof state.balances[TREASURY_ACCOUNT_ID] === "number"
+      ? state.balances[TREASURY_ACCOUNT_ID]
+      : 0;
 
   let body;
   if (!ranked.length) {
@@ -277,6 +342,10 @@ function buildRichestEmbed(guild, state) {
     .setDescription(
       "Les membres avec le plus gros solde sur `/bank`.\n\n" + body
     )
+    .addFields({
+      name: "🏛️ Banque de la Maison",
+      value: `**${formatEuro(treasury)}** *(cumul des taxes)*`,
+    })
     .setFooter({
       text: `Top ${RICHEST_TOP} • Classement hebdomadaire (chaque dimanche)`,
     })
@@ -404,6 +473,23 @@ function registerDelMoneyCommand() {
     .toJSON();
 }
 
+function registerVirementCommand() {
+  return new SlashCommandBuilder()
+    .setName("virement")
+    .setDescription("Envoyer de l'argent à un membre (25% de taxe)")
+    .addUserOption((option) =>
+      option.setName("membre").setDescription("Destinataire du virement").setRequired(true)
+    )
+    .addNumberOption((option) =>
+      option
+        .setName("montant")
+        .setDescription("Montant à envoyer (€) — 25% de taxe déduite au destinataire")
+        .setRequired(true)
+        .setMinValue(0.01)
+    )
+    .toJSON();
+}
+
 function registerClassementSetupCommand() {
   return new SlashCommandBuilder()
     .setName("classement-setup")
@@ -418,11 +504,15 @@ module.exports = {
   hasEnough,
   formatEuro,
   applyTax,
+  collectTax,
+  getTreasuryBalance,
+  TREASURY_ACCOUNT_ID,
   logTransaction,
   handleBankInteraction,
   registerBankCommand,
   registerAddMoneyCommand,
   registerDelMoneyCommand,
+  registerVirementCommand,
   registerClassementSetupCommand,
   startRichestLeaderboardScheduler,
   DEFAULT_BALANCE,

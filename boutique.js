@@ -1,6 +1,14 @@
 const fs = require("fs");
 const { getStatePath, persistState } = require("./storage");
-const { hasEnough, removeFunds, addFunds, applyTax, logTransaction, formatEuro: bankFormatEuro } = require("./bank");
+const {
+  hasEnough,
+  removeFunds,
+  addFunds,
+  applyTax,
+  collectTax,
+  logTransaction,
+  formatEuro: bankFormatEuro,
+} = require("./bank");
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -789,6 +797,7 @@ async function handleShopInteraction(interaction, client) {
     const { gross, tax, net } = applyTax(price);
     removeFunds(trade.buyerId, gross);
     addFunds(trade.sellerId, net);
+    collectTax(tax);
 
     await logTransaction(client, {
       type: `🦋 Vente boutique — ${trade.item.name}`,

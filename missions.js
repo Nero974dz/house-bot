@@ -1,6 +1,12 @@
 const fs = require("fs");
 const { getStatePath, persistState } = require("./storage");
-const { addFunds, applyTax, logTransaction, formatEuro: bankFormatEuro } = require("./bank");
+const {
+  addFunds,
+  applyTax,
+  collectTax,
+  logTransaction,
+  formatEuro: bankFormatEuro,
+} = require("./bank");
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -447,6 +453,7 @@ async function finishMission(interaction, client, missionId) {
   const price = parseAmount(mission.price);
   const { gross, tax, net } = applyTax(price);
   addFunds(mission.takerId, net);
+  collectTax(tax);
 
   await logTransaction(client, {
     type: `📋 Mission — ${mission.title}`,

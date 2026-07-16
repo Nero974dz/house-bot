@@ -22,7 +22,9 @@
     { "text": "Retour de la Machine à sous au casino (en plus du Blackjack, de la Roulette et des Défis) : 3 symboles, plus rare = plus gros gain, trois 7️⃣ font tomber le jackpot.", "addedAt": 1752796800000 },
     { "text": "Équilibrage du casino (comme un vrai casino) : suppression des bonus jackpot trop généreux au blackjack (15%) et à la roulette verte (20%) qui rendaient le jeu gagnant sur le long terme. Blackjack naturel passé de x2,5 à x2,2 (6:5). La maison garde maintenant l'avantage partout.", "addedAt": 1752796800000 },
     { "text": "Les défis 1v1 du casino se déroulent maintenant dans le salon dédié, et le nouveau solde s'affiche automatiquement après chaque partie (blackjack, roulette, machine à sous, duels).", "addedAt": 1752796800000 },
-    { "text": "Nouvelle commande /delbank (Fondation) pour retirer de l'argent du compte d'un membre.", "addedAt": 1752796800000 }
+    { "text": "Nouvelle commande /delbank (Fondation) pour retirer de l'argent du compte d'un membre.", "addedAt": 1752796800000 },
+    { "text": "Nouvelle commande /virement pour envoyer de l'argent à un membre (le destinataire reçoit 75%, 25% de taxe pour la maison).", "addedAt": 1752796800000 },
+    { "text": "Toutes les taxes (boutique, missions, virements) sont désormais versées à la Banque de la Maison, dont le total est affiché dans le classement.", "addedAt": 1752796800000 }
   ],
   "history": [
     {
