@@ -26,7 +26,8 @@
     { "text": "Nouvelle commande /virement pour envoyer de l'argent à un membre (le destinataire reçoit 75%, 25% de taxe pour la maison).", "addedAt": 1752796800000 },
     { "text": "Toutes les taxes (boutique, missions, virements) sont désormais versées à la Banque de la Maison, dont le total est affiché dans le classement.", "addedAt": 1752796800000 },
     { "text": "Boutique simplifiée : plus besoin d'envoyer une demande au vendeur ni d'attendre son accord — on paie directement avec son solde /bank. Le vendeur est payé aussitôt et un ticket s'ouvre juste pour la remise de l'article.", "addedAt": 1752796800000 },
-    { "text": "Machine à sous : possibilité d'enchaîner x5 ou x10 tours d'un coup, avec un récapitulatif de tous les tours et du résultat net.", "addedAt": 1752796800000 }
+    { "text": "Machine à sous : possibilité d'enchaîner x5 ou x10 tours d'un coup, avec un récapitulatif de tous les tours et du résultat net.", "addedAt": 1752796800000 },
+    { "text": "Casino : toutes les parties sont désormais logguées (joueur, jeu, mise, gain, solde), et tout gain net supérieur à 500 € est annoncé publiquement.", "addedAt": 1752796800000 }
   ],
   "history": [
     {

@@ -15,6 +15,9 @@ const { hasEnough, removeFunds, addFunds, getBalance, formatEuro } = require("./
 
 const CASINO_CHANNEL_ID = "1527054335928827954";
 const DUEL_CHANNEL_ID = "1509983753605349498";
+const BIG_WIN_CHANNEL_ID = "1509983753605349498"; // annonce des gros gains
+const CASINO_LOG_CHANNEL_ID = "1510687492896981102"; // log de toutes les parties
+const BIG_WIN_THRESHOLD = 500; // gain net à partir duquel on annonce
 const FONDATION_ROLE_ID = "1509974377267990659";
 
 const STATE_FILE = getStatePath("casino-state.json");
@@ -502,6 +505,15 @@ async function settleBlackjack(client, userId) {
 
   const embed = buildBlackjackEmbed({ player, dealer, amount, hideDealer: false, status, resultLine });
   embed.addFields({ name: "💰 Votre solde", value: formatEuro(getBalance(userId)), inline: true });
+
+  await reportCasinoResult(client, {
+    userId,
+    game: "Blackjack",
+    stake: amount,
+    payout,
+    detail: `Vous : ${formatHand(player)} (${playerTotal}) — Croupier : ${formatHand(dealer)} (${dealerTotal})`,
+  });
+
   return embed;
 }
 
@@ -534,6 +546,58 @@ async function startBlackjack(interaction, client, amount) {
     embeds: [buildBlackjackEmbed({ player, dealer, amount, hideDealer: true, status: "playing" })],
     components: [buildBlackjackRow()],
   });
+}
+
+// --- Logs & annonces ---
+
+/** Log d'une partie (quelle que soit la somme) dans le salon de logs. */
+async function logCasinoPlay(client, { userId, game, stake, payout, detail }) {
+  const channel = await client.channels.fetch(CASINO_LOG_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) return;
+
+  const net = round2(payout - stake);
+  const embed = new EmbedBuilder()
+    .setColor(net > 0 ? 0x2ecc71 : net === 0 ? 0x95a5a6 : 0xe74c3c)
+    .setTitle("🎲 Partie de casino")
+    .addFields(
+      { name: "Joueur", value: `<@${userId}>`, inline: true },
+      { name: "Jeu", value: game, inline: true },
+      { name: "Misé", value: formatEuro(stake), inline: true },
+      { name: "Gagné", value: formatEuro(payout), inline: true },
+      { name: "Net", value: `${net >= 0 ? "🟢 +" : "🔴 "}${formatEuro(net)}`, inline: true },
+      { name: "Solde après", value: formatEuro(getBalance(userId)), inline: true }
+    )
+    .setTimestamp();
+  if (detail) embed.setDescription(detail.slice(0, 2000));
+
+  await channel.send({ embeds: [embed] }).catch(() => null);
+}
+
+/** Annonce publique si le gain net dépasse le seuil. */
+async function announceBigWin(client, { userId, game, net, detail }) {
+  if (net <= BIG_WIN_THRESHOLD) return;
+  const channel = await client.channels.fetch(BIG_WIN_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) return;
+
+  const embed = new EmbedBuilder()
+    .setColor(0xf1c40f)
+    .setTitle("💰 GROS GAIN !")
+    .setDescription(
+      `🎉 <@${userId}> vient de remporter **${formatEuro(net)}** au **${game}** !` +
+        (detail ? `\n\n${detail.slice(0, 500)}` : "")
+    )
+    .setTimestamp();
+
+  await channel.send({ embeds: [embed] }).catch(() => null);
+}
+
+/** Logge la partie et annonce si c'est un gros gain. */
+async function reportCasinoResult(client, { userId, game, stake, payout, detail }) {
+  await logCasinoPlay(client, { userId, game, stake, payout, detail });
+  const net = round2(payout - stake);
+  if (net > BIG_WIN_THRESHOLD) {
+    await announceBigWin(client, { userId, game, net, detail });
+  }
 }
 
 // --- Machine à sous ---
@@ -618,17 +682,21 @@ async function playSlots(interaction, client, amount, spins = 1) {
     const line = spin.reels.map((r) => r.emoji).join(" | ");
     let resultText;
     let color = 0xe74c3c;
+    let payout = 0;
 
     if (spin.isJackpot) {
       const won = awardJackpot(interaction.user.id);
+      payout = won;
       resultText = `💥🎉 **JACKPOT !!!** 🎉💥\nVous remportez **${formatEuro(won)}** !`;
       color = 0xf1c40f;
     } else if (spin.kind === "triple") {
       addFunds(interaction.user.id, spin.won);
+      payout = spin.won;
       resultText = `✅ Trois **${r0.emoji}** ! Vous gagnez **${formatEuro(spin.won)}** (x${r0.multiplier}).`;
       color = 0x2ecc71;
     } else if (spin.kind === "paire") {
       addFunds(interaction.user.id, spin.won);
+      payout = spin.won;
       resultText = `➖ Paire ! Mise remboursée (${formatEuro(amount)}).`;
       color = 0x95a5a6;
     } else {
@@ -645,6 +713,13 @@ async function playSlots(interaction, client, amount, spins = 1) {
 
     await updateCasinoMessage(client, loadState());
     await interaction.editReply({ embeds: [resultEmbed] });
+    await reportCasinoResult(client, {
+      userId: interaction.user.id,
+      game: "Machine à sous",
+      stake: totalStake,
+      payout,
+      detail: `[ ${line} ]`,
+    });
     return;
   }
 
@@ -704,6 +779,13 @@ async function playSlots(interaction, client, amount, spins = 1) {
 
   await updateCasinoMessage(client, loadState());
   await interaction.editReply({ embeds: [resultEmbed] });
+  await reportCasinoResult(client, {
+    userId: interaction.user.id,
+    game: `Machine à sous (${spins} tours)`,
+    stake: totalStake,
+    payout: totalWon,
+    detail: jackpotWon > 0 ? `💥 Jackpot décroché : ${formatEuro(jackpotWon)}` : null,
+  });
 }
 
 // --- Roulette ---
@@ -739,9 +821,11 @@ async function playRoulette(interaction, client, color, amount) {
   else if (resultColor === "noir" && IMAGES.rouletteNoir) embed.setImage(IMAGES.rouletteNoir);
   else if (IMAGES.rouletteSpin) embed.setImage(IMAGES.rouletteSpin);
 
+  let payout = 0;
   if (color === resultColor) {
     const won = round2(amount * multiplier);
     addFunds(interaction.user.id, won);
+    payout = won;
     embed.addFields({ name: "Résultat", value: `✅ Gagné ! Vous remportez **${formatEuro(won)}** (x${multiplier}).` });
   } else {
     embed.addFields({ name: "Résultat", value: `❌ Perdu. Mise : ${formatEuro(amount)}.` });
@@ -751,6 +835,13 @@ async function playRoulette(interaction, client, color, amount) {
 
   await updateCasinoMessage(client, loadState());
   await interaction.editReply({ content: "", embeds: [embed] });
+  await reportCasinoResult(client, {
+    userId: interaction.user.id,
+    game: "Roulette",
+    stake: amount,
+    payout,
+    detail: `Mise sur **${color}** — sortie : **${number}** ${colorEmoji[resultColor]}`,
+  });
 }
 
 // --- Duel PvP ---
@@ -828,6 +919,36 @@ async function finishDuel(client, duel, winnerId) {
   else state.duels.push(duel);
   saveState(state);
   await updateCasinoMessage(client, loadState());
+
+  // Log des deux joueurs (le gagnant déclenche l'annonce si > seuil)
+  const gameName = `Défi — ${GAME_NAMES[duel.game] || "Pile ou face"}`;
+  if (winnerId) {
+    const loserId = winnerId === duel.challengerId ? duel.opponentId : duel.challengerId;
+    await reportCasinoResult(client, {
+      userId: winnerId,
+      game: gameName,
+      stake: duel.amount,
+      payout,
+      detail: `Victoire contre <@${loserId}>`,
+    });
+    await logCasinoPlay(client, {
+      userId: loserId,
+      game: gameName,
+      stake: duel.amount,
+      payout: 0,
+      detail: `Défaite contre <@${winnerId}>`,
+    });
+  } else {
+    for (const id of [duel.challengerId, duel.opponentId]) {
+      await logCasinoPlay(client, {
+        userId: id,
+        game: gameName,
+        stake: duel.amount,
+        payout: duel.amount,
+        detail: "Égalité — mise remboursée",
+      });
+    }
+  }
 
   return payout;
 }
