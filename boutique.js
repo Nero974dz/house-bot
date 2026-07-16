@@ -41,9 +41,6 @@ const SELECT = {
   REMOVE: "shop_remove_select",
 };
 const BUY_PREFIX = "shop_buy_";
-const ACCEPT_PREFIX = "shop_accept_";
-const REFUSE_PREFIX = "shop_refuse_";
-const TRADE_BUYER_PREFIX = "shop_trade_buyer_";
 const TRADE_SELLER_PREFIX = "shop_trade_seller_";
 
 function loadState() {
@@ -121,12 +118,13 @@ function buildShopEmbed(state) {
     .setDescription(
       "♡ ••••• ♡\n\n" +
         "*Bienvenue dans la boutique de la Maison.*\n" +
-        "Parcourez les articles — achat sécurisé via **middleman**.\n\n" +
+        "Choisissez un article et **payez directement** avec votre solde `/bank` — " +
+        "un ticket s'ouvre ensuite pour la remise de l'article.\n\n" +
         `⤷ **${count}** article(s) disponible(s)\n\n` +
         listing
     )
     .setFooter({
-      text: "Vendeurs : rôle boutique • Transaction sécurisée middleman",
+      text: "Vendeurs : rôle boutique • Paiement direct via /bank",
     })
     .setTimestamp();
 }
@@ -240,39 +238,8 @@ function buildRemoveSelect(state, sellerId) {
   );
 }
 
-function buildSellerRequestEmbed(item, buyer, requestId) {
-  return new EmbedBuilder()
-    .setColor(0xf39c12)
-    .setTitle("🛒 Demande d'achat")
-    .setDescription(
-      `${buyer} souhaite acheter votre article.\n\n` +
-        `**Article :** ${item.name}\n` +
-        `**Prix :** ${item.price} €\n` +
-        `**Description :** ${item.description}\n\n` +
-        `Acceptez pour ouvrir un ticket **middleman** sécurisé.`
-    )
-    .setFooter({ text: `Demande ${requestId}` })
-    .setTimestamp();
-}
-
-function buildSellerRequestRow(requestId) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`${ACCEPT_PREFIX}${requestId}`)
-      .setLabel("Accepter la vente")
-      .setEmoji("✅")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`${REFUSE_PREFIX}${requestId}`)
-      .setLabel("Refuser")
-      .setEmoji("❌")
-      .setStyle(ButtonStyle.Danger)
-  );
-}
-
 function buildTradeIntroEmbed(trade) {
-  const statusBuyer = trade.buyerConfirmed ? "✅ Payé" : "⏳ En attente";
-  const statusSeller = trade.sellerConfirmed ? "✅ Confirmé" : "⏳ En attente";
+  const statusSeller = trade.sellerConfirmed ? "✅ Article remis" : "⏳ En attente";
   const price = parseAmount(trade.item.price);
   const { tax, net } = applyTax(price);
 
@@ -284,13 +251,12 @@ function buildTradeIntroEmbed(trade) {
         `**Article :** ${trade.item.name}\n` +
         `**Prix :** ${trade.item.price} €\n` +
         `**Description :** ${trade.item.description}\n\n` +
-        `📋 **Étapes :**\n` +
-        `1️⃣ L'**acheteur** clique sur "Payer" — le bot débite son compte \`/bank\` automatiquement\n` +
-        `   *(le vendeur reçoit ${bankFormatEuro(net)} net, taxe de la maison : ${bankFormatEuro(tax)})*\n` +
-        `2️⃣ Le **vendeur** remet l'**article** au middleman <@&${MIDDLEMAN_ROLE_ID}>\n` +
-        `3️⃣ Chacun **confirme** ci-dessous une fois l'étape effectuée\n` +
-        `4️⃣ Le ticket se ferme automatiquement quand les deux ont validé\n\n` +
-        `💶 Paiement : ${statusBuyer}\n` +
+        `💶 **Paiement : ✅ déjà effectué automatiquement**\n` +
+        `*Le vendeur a reçu ${bankFormatEuro(net)} (taxe de la maison : ${bankFormatEuro(tax)}).*\n\n` +
+        `📋 **Il reste à faire :**\n` +
+        `1️⃣ Le **vendeur** remet l'**article** à l'acheteur (via middleman <@&${MIDDLEMAN_ROLE_ID}> si besoin)\n` +
+        `2️⃣ Le **vendeur** clique sur le bouton ci-dessous\n` +
+        `3️⃣ Le ticket se ferme automatiquement\n\n` +
         `📦 Vendeur : ${statusSeller}`
     )
     .setTimestamp();
@@ -298,12 +264,6 @@ function buildTradeIntroEmbed(trade) {
 
 function buildTradeConfirmRow(tradeId, trade) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`${TRADE_BUYER_PREFIX}${tradeId}`)
-      .setLabel("Payer (/bank)")
-      .setEmoji("💶")
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(trade.buyerConfirmed),
     new ButtonBuilder()
       .setCustomId(`${TRADE_SELLER_PREFIX}${tradeId}`)
       .setLabel("J'ai donné l'article")
@@ -516,9 +476,6 @@ async function handleShopInteraction(interaction, client) {
     (interaction.isButton() &&
       (Object.values(BTN).includes(id) ||
         id.startsWith(BUY_PREFIX) ||
-        id.startsWith(ACCEPT_PREFIX) ||
-        id.startsWith(REFUSE_PREFIX) ||
-        id.startsWith(TRADE_BUYER_PREFIX) ||
         id.startsWith(TRADE_SELLER_PREFIX)));
 
   if (!isShop) return false;
@@ -564,7 +521,7 @@ async function handleShopInteraction(interaction, client) {
     return true;
   }
 
-  // --- Achat : demande au vendeur ---
+  // --- Achat : paiement direct, sans demande au vendeur ---
   if (interaction.isButton() && interaction.customId.startsWith(BUY_PREFIX)) {
     const itemId = interaction.customId.slice(BUY_PREFIX.length);
     const state = loadState();
@@ -586,207 +543,16 @@ async function handleShopInteraction(interaction, client) {
       return true;
     }
 
-    const requestId = `req_${Date.now()}`;
-    state.pending[requestId] = {
-      itemId,
-      buyerId: interaction.user.id,
-      sellerId: item.sellerId,
-      guildId: interaction.guild.id,
-      itemSnapshot: { ...item },
-      createdAt: Date.now(),
-    };
-    saveState(state);
-
-    const seller = await interaction.guild.members
-      .fetch(item.sellerId)
-      .catch(() => null);
-
-    const requestEmbed = buildSellerRequestEmbed(
-      item,
-      interaction.member,
-      requestId
-    );
-    const requestRow = buildSellerRequestRow(requestId);
-
-    if (seller) {
-      await seller
-        .send({ embeds: [requestEmbed], components: [requestRow] })
-        .catch(async () => {
-          await interaction.channel.send({
-            content: `${seller} — Demande d'achat (MP fermés)`,
-            embeds: [requestEmbed],
-            components: [requestRow],
-          });
-        });
-    }
-
-    await interaction.reply({
-      content:
-        "⏳ Demande envoyée au vendeur.\n" +
-        "S'il **accepte**, un ticket middleman sera ouvert automatiquement.",
-      ephemeral: true,
-    });
-    return true;
-  }
-
-  // --- Vendeur accepte / refuse ---
-  if (interaction.isButton() && interaction.customId.startsWith(ACCEPT_PREFIX)) {
-    const requestId = interaction.customId.slice(ACCEPT_PREFIX.length);
-    const state = loadState();
-    const pending = state.pending[requestId];
-
-    if (!pending) {
+    const price = parseAmount(item.price);
+    if (!price || Number.isNaN(price) || price <= 0) {
       await interaction.reply({
-        content: "❌ Cette demande n'est plus valide.",
+        content: "❌ Prix de l'article invalide. Contactez un admin.",
         ephemeral: true,
       });
       return true;
     }
 
-    if (interaction.user.id !== pending.sellerId) {
-      await interaction.reply({
-        content: "❌ Seul le vendeur peut accepter cette demande.",
-        ephemeral: true,
-      });
-      return true;
-    }
-
-    const guild = await client.guilds.fetch(pending.guildId).catch(() => null);
-    if (!guild) {
-      await interaction.reply({ content: "❌ Serveur introuvable.", ephemeral: true });
-      return true;
-    }
-
-    const item = getItem(state, pending.itemId);
-    const itemData = item || pending.itemSnapshot;
-
-    const tradeId = `trade_${Date.now()}`;
-    const trade = {
-      item: {
-        name: itemData.name,
-        price: itemData.price,
-        description: itemData.description,
-      },
-      itemId: pending.itemId,
-      buyerId: pending.buyerId,
-      sellerId: pending.sellerId,
-      buyerConfirmed: false,
-      sellerConfirmed: false,
-      channelId: null,
-      status: "pending",
-      createdAt: Date.now(),
-    };
-
-    try {
-      const ticketChannel = await createTradeTicket(guild, client, trade, tradeId);
-
-      state.trades[tradeId] = trade;
-      if (item) {
-        state.items = state.items.filter((i) => i.id !== pending.itemId);
-      }
-      delete state.pending[requestId];
-      saveState(state);
-      await updateShopPanel(client);
-
-      await interaction.update({
-        content: `✅ Vente acceptée — ticket ouvert : ${ticketChannel}`,
-        embeds: [],
-        components: [],
-      });
-
-      const buyer = await guild.members.fetch(pending.buyerId).catch(() => null);
-      if (buyer) {
-        await buyer
-          .send(
-            `✅ Le vendeur a accepté ! Ticket middleman : ${ticketChannel}\n` +
-              `**${itemData.name}** — ${itemData.price} €`
-          )
-          .catch(() => null);
-      }
-    } catch (err) {
-      console.error("Erreur ticket boutique:", err.message);
-      const payload = {
-        content: "❌ Impossible de créer le ticket. Contactez un admin.",
-        embeds: [],
-        components: [],
-      };
-      if (interaction.deferred || interaction.replied) {
-        await interaction.followUp(payload).catch(() => null);
-      } else if (interaction.message) {
-        await interaction.update(payload).catch(() => interaction.reply(payload));
-      } else {
-        await interaction.reply(payload);
-      }
-    }
-    return true;
-  }
-
-  if (interaction.isButton() && interaction.customId.startsWith(REFUSE_PREFIX)) {
-    const requestId = interaction.customId.slice(REFUSE_PREFIX.length);
-    const state = loadState();
-    const pending = state.pending[requestId];
-
-    if (!pending) {
-      await interaction.reply({
-        content: "❌ Cette demande n'est plus valide.",
-        ephemeral: true,
-      });
-      return true;
-    }
-
-    if (interaction.user.id !== pending.sellerId) {
-      await interaction.reply({
-        content: "❌ Seul le vendeur peut refuser.",
-        ephemeral: true,
-      });
-      return true;
-    }
-
-    delete state.pending[requestId];
-    saveState(state);
-
-    const guild = await client.guilds.fetch(pending.guildId).catch(() => null);
-    if (guild) {
-      const buyer = await guild.members.fetch(pending.buyerId).catch(() => null);
-      if (buyer) {
-        await buyer
-          .send(
-            `❌ Le vendeur a refusé votre demande d'achat pour **${pending.itemSnapshot?.name || "l'article"}**.`
-          )
-          .catch(() => null);
-      }
-    }
-
-    await interaction.update({
-      content: "❌ Vente refusée.",
-      embeds: [],
-      components: [],
-    });
-    return true;
-  }
-
-  // --- Confirmations dans le ticket ---
-  if (interaction.isButton() && interaction.customId.startsWith(TRADE_BUYER_PREFIX)) {
-    const tradeId = interaction.customId.slice(TRADE_BUYER_PREFIX.length);
-    const state = loadState();
-    const trade = state.trades[tradeId];
-
-    if (!trade || trade.status === "closed") {
-      await interaction.reply({ content: "❌ Transaction terminée ou invalide.", ephemeral: true });
-      return true;
-    }
-
-    if (interaction.user.id !== trade.buyerId) {
-      await interaction.reply({
-        content: "❌ Seul l'acheteur peut effectuer le paiement.",
-        ephemeral: true,
-      });
-      return true;
-    }
-
-    const price = parseAmount(trade.item.price);
-
-    if (!hasEnough(trade.buyerId, price)) {
+    if (!hasEnough(interaction.user.id, price)) {
       await interaction.reply({
         content: "❌ Solde insuffisant. Vérifiez votre solde avec `/bank`.",
         ephemeral: true,
@@ -794,33 +560,71 @@ async function handleShopInteraction(interaction, client) {
       return true;
     }
 
+    await interaction.deferReply({ ephemeral: true });
+
+    // Paiement immédiat
     const { gross, tax, net } = applyTax(price);
-    removeFunds(trade.buyerId, gross);
-    addFunds(trade.sellerId, net);
+    removeFunds(interaction.user.id, gross);
+    addFunds(item.sellerId, net);
     collectTax(tax);
 
     await logTransaction(client, {
-      type: `🦋 Vente boutique — ${trade.item.name}`,
-      from: trade.buyerId,
-      to: trade.sellerId,
+      type: `🦋 Vente boutique — ${item.name}`,
+      from: interaction.user.id,
+      to: item.sellerId,
       gross,
       tax,
       net,
     });
 
-    trade.buyerConfirmed = true;
-    saveState(state);
-    await updateTradeMessage(interaction.guild, tradeId, state);
+    const tradeId = `trade_${Date.now()}`;
+    const trade = {
+      item: { name: item.name, price: item.price, description: item.description },
+      itemId,
+      buyerId: interaction.user.id,
+      sellerId: item.sellerId,
+      buyerConfirmed: true, // payé automatiquement
+      sellerConfirmed: false,
+      channelId: null,
+      status: "pending",
+      createdAt: Date.now(),
+    };
 
-    await interaction.reply({
-      content:
-        `✅ Paiement effectué : **${bankFormatEuro(gross)}** débités de votre compte.\n` +
-        `Le vendeur reçoit **${bankFormatEuro(net)}** (taxe de la maison : ${bankFormatEuro(tax)}).`,
-      ephemeral: true,
-    });
+    try {
+      const ticketChannel = await createTradeTicket(interaction.guild, client, trade, tradeId);
 
-    if (trade.buyerConfirmed && trade.sellerConfirmed) {
-      await closeTrade(interaction.guild, client, tradeId, loadState());
+      const fresh = loadState();
+      fresh.trades[tradeId] = trade;
+      fresh.items = fresh.items.filter((i) => i.id !== itemId);
+      saveState(fresh);
+      await updateShopPanel(client);
+
+      await interaction.editReply({
+        content:
+          `✅ Achat effectué : **${bankFormatEuro(gross)}** débités de votre compte.\n` +
+          `Le vendeur a reçu **${bankFormatEuro(net)}** (taxe : ${bankFormatEuro(tax)}).\n` +
+          `Ticket de remise ouvert : ${ticketChannel}`,
+      });
+
+      const seller = await interaction.guild.members.fetch(item.sellerId).catch(() => null);
+      if (seller) {
+        await seller
+          .send(
+            `💰 **${item.name}** vient d'être acheté par <@${interaction.user.id}> !\n` +
+              `Vous avez reçu **${bankFormatEuro(net)}** sur votre compte \`/bank\`.\n` +
+              `Merci de remettre l'article : ${ticketChannel}`
+          )
+          .catch(() => null);
+      }
+    } catch (err) {
+      console.error("Erreur ticket boutique:", err.message);
+      // Remboursement si le ticket n'a pas pu être créé
+      addFunds(interaction.user.id, gross);
+      removeFunds(item.sellerId, net);
+      collectTax(-tax);
+      await interaction.editReply({
+        content: "❌ Impossible de créer le ticket, achat annulé et remboursé. Contactez un admin.",
+      });
     }
     return true;
   }
@@ -869,9 +673,9 @@ async function handleShopInteraction(interaction, client) {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`${BUY_PREFIX}${item.id}`)
-        .setLabel("Acheter / Contacter")
-        .setEmoji("🦋")
-        .setStyle(ButtonStyle.Primary)
+        .setLabel("Acheter maintenant")
+        .setEmoji("💶")
+        .setStyle(ButtonStyle.Success)
     );
 
     await interaction.reply({
