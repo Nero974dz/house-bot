@@ -39,11 +39,13 @@
       "durationKey": "1",
       "interestRate": 0.05,
       "createdAt": 1784221187583,
-      "status": "active",
+      "status": "removed",
       "approvedAt": 1784221264110,
       "rejectedAt": null,
       "validatorId": "1445816241116807238",
-      "pendingMessageId": null
+      "pendingMessageId": null,
+      "removedAt": 1784233681758,
+      "removedById": "1411724649036910673"
     }
   ]
 }
