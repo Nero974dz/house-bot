@@ -1,32 +1,7 @@
 {
   "messageId": "1510778225415159808",
-  "items": [
-    {
-      "id": "item_1784170322312",
-      "sellerId": "1363979726418608148",
-      "name": "Test",
-      "price": "120",
-      "description": "Test",
-      "createdAt": 1784170322312
-    }
-  ],
-  "pending": {
-    "req_1784170336400": {
-      "itemId": "item_1784170322312",
-      "buyerId": "1445816241116807238",
-      "sellerId": "1363979726418608148",
-      "guildId": "1509966808223056022",
-      "itemSnapshot": {
-        "id": "item_1784170322312",
-        "sellerId": "1363979726418608148",
-        "name": "Test",
-        "price": "120",
-        "description": "Test",
-        "createdAt": 1784170322312
-      },
-      "createdAt": 1784170336400
-    }
-  },
+  "items": [],
+  "pending": {},
   "trades": {
     "trade_1780268644437": {
       "item": {
@@ -43,6 +18,21 @@
       "status": "closed",
       "createdAt": 1780268644437,
       "closedAt": 1780268679963
+    },
+    "trade_1784170342928": {
+      "item": {
+        "name": "Test",
+        "price": "120",
+        "description": "Test"
+      },
+      "itemId": "item_1784170322312",
+      "buyerId": "1445816241116807238",
+      "sellerId": "1363979726418608148",
+      "buyerConfirmed": false,
+      "sellerConfirmed": false,
+      "channelId": "1527145847840833708",
+      "status": "open",
+      "createdAt": 1784170342928
     }
   }
 }
