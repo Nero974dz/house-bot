@@ -74,6 +74,15 @@
       },
       "winnerId": "1411724649036910673",
       "resolvedAt": 1784166735009
+    },
+    {
+      "id": "duel_1784218672269",
+      "challengerId": "1445816241116807238",
+      "opponentId": "1411724649036910673",
+      "amount": 250,
+      "game": "rps",
+      "status": "pending",
+      "createdAt": 1784218672270
     }
   ],
   "blackjack": {}
