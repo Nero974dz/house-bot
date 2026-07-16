@@ -28,11 +28,12 @@
       "itemId": "item_1784170322312",
       "buyerId": "1445816241116807238",
       "sellerId": "1363979726418608148",
-      "buyerConfirmed": false,
+      "buyerConfirmed": true,
       "sellerConfirmed": true,
       "channelId": "1527145847840833708",
-      "status": "open",
-      "createdAt": 1784170342928
+      "status": "closed",
+      "createdAt": 1784170342928,
+      "closedAt": 1784170362693
     }
   }
 }
