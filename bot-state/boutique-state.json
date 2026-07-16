@@ -8,14 +8,6 @@
       "price": "600",
       "description": "Neuf",
       "createdAt": 1784170566063
-    },
-    {
-      "id": "item_1784207203245",
-      "sellerId": "1363979726418608148",
-      "name": "test",
-      "price": "111",
-      "description": "test",
-      "createdAt": 1784207203245
     }
   ],
   "pending": {},
@@ -51,6 +43,21 @@
       "status": "closed",
       "createdAt": 1784170342928,
       "closedAt": 1784170362693
+    },
+    "trade_1784207208730": {
+      "item": {
+        "name": "test",
+        "price": "111",
+        "description": "test"
+      },
+      "itemId": "item_1784207203245",
+      "buyerId": "1445816241116807238",
+      "sellerId": "1363979726418608148",
+      "buyerConfirmed": true,
+      "sellerConfirmed": false,
+      "channelId": "1527300474183614607",
+      "status": "open",
+      "createdAt": 1784207208730
     }
   }
 }
