@@ -1,6 +1,15 @@
 {
   "messageId": "1510778225415159808",
-  "items": [],
+  "items": [
+    {
+      "id": "item_1784170322312",
+      "sellerId": "1363979726418608148",
+      "name": "Test",
+      "price": "120",
+      "description": "Test",
+      "createdAt": 1784170322312
+    }
+  ],
   "pending": {},
   "trades": {
     "trade_1780268644437": {
