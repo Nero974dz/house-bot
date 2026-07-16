@@ -1,0 +1,34 @@
+{
+  "messageId": "1511287664446406676",
+  "credits": [
+    {
+      "id": "cred_1780389523397",
+      "userId": "1363979726418608148",
+      "amount": 1000,
+      "reason": "test",
+      "durationKey": "2",
+      "interestRate": 0.1,
+      "createdAt": 1780389523397,
+      "status": "removed",
+      "removedAt": 1780389997283,
+      "removedById": "1363979726418608148"
+    },
+    {
+      "id": "cred_1780390061535",
+      "userId": "1363979726418608148",
+      "guildId": "1509966808223056022",
+      "amount": 1500,
+      "reason": "test",
+      "durationKey": "3",
+      "interestRate": 0.25,
+      "createdAt": 1780390061535,
+      "status": "removed",
+      "approvedAt": 1780390077602,
+      "rejectedAt": null,
+      "validatorId": "1363979726418608148",
+      "pendingMessageId": "1511290196618907701",
+      "removedAt": 1780390845479,
+      "removedById": "1363979726418608148"
+    }
+  ]
+}
