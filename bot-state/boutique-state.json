@@ -1,15 +1,6 @@
 {
   "messageId": "1510778225415159808",
-  "items": [
-    {
-      "id": "item_1784170292927",
-      "sellerId": "1363979726418608148",
-      "name": "Iphone 17 Pro",
-      "price": "950",
-      "description": "Presque Neuf",
-      "createdAt": 1784170292927
-    }
-  ],
+  "items": [],
   "pending": {},
   "trades": {
     "trade_1780268644437": {
