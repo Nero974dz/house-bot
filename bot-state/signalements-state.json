@@ -1,19 +1,4 @@
 {
   "messageId": "1510690884931293386",
-  "reports": [
-    {
-      "id": "sig_1780247326432",
-      "targetId": null,
-      "targetName": "@Ryuk",
-      "description": "me clc",
-      "createdAt": 1780247326432,
-      "entries": [
-        {
-          "description": "me clc",
-          "createdAt": 1780247326432
-        }
-      ],
-      "updatedAt": 1780247326432
-    }
-  ]
+  "reports": []
 }
