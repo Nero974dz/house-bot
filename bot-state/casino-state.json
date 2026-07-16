@@ -66,8 +66,9 @@
       "opponentId": "1411724649036910673",
       "amount": 250,
       "game": "rps",
-      "status": "pending",
-      "createdAt": 1784166686195
+      "status": "playing",
+      "createdAt": 1784166686195,
+      "rpsChoices": {}
     }
   ],
   "blackjack": {}
