@@ -68,7 +68,9 @@
       "game": "rps",
       "status": "playing",
       "createdAt": 1784166686195,
-      "rpsChoices": {}
+      "rpsChoices": {
+        "1445816241116807238": "pierre"
+      }
     }
   ],
   "blackjack": {}
