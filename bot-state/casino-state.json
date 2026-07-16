@@ -10,6 +10,15 @@
       "game": "c4",
       "status": "cancelled",
       "createdAt": 1784166432061
+    },
+    {
+      "id": "duel_1784166481201",
+      "challengerId": "1445816241116807238",
+      "opponentId": "1363979726418608148",
+      "amount": 200,
+      "game": "c4",
+      "status": "pending",
+      "createdAt": 1784166481201
     }
   ],
   "blackjack": {}
