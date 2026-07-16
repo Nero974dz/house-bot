@@ -11,9 +11,10 @@ const {
   SlashCommandBuilder,
 } = require("discord.js");
 const { getStatePath, persistState } = require("./storage");
-const { hasEnough, removeFunds, addFunds, formatEuro } = require("./bank");
+const { hasEnough, removeFunds, addFunds, getBalance, formatEuro } = require("./bank");
 
 const CASINO_CHANNEL_ID = "1527054335928827954";
+const DUEL_CHANNEL_ID = "1509983753605349498";
 const FONDATION_ROLE_ID = "1509974377267990659";
 
 const STATE_FILE = getStatePath("casino-state.json");
@@ -229,11 +230,11 @@ function buildCasinoEmbed(state) {
     .setTitle("🎰 Casino de la Maison")
     .setDescription(
       "Bienvenue au casino ! Votre solde vient de **`/bank`**.\n\n" +
-        "🃏 **Blackjack** — battez le croupier sans dépasser 21. Blackjack naturel = x2,5 (et une chance de faire tomber le jackpot).\n" +
-        "🎡 **Roulette** — Rouge/Noir (x2) ou Vert (x14, avec une chance de jackpot en plus).\n" +
+        "🃏 **Blackjack** — battez le croupier sans dépasser 21. Blackjack naturel payé 6:5 (x2,2).\n" +
+        "🎡 **Roulette** — Rouge/Noir (x2) ou Vert (x14).\n" +
         "🎰 **Machine à sous** — 3 symboles, plus rare = plus gros gain. Trois 7️⃣ font tomber le **jackpot** !\n" +
         "⚔️ **Défi** — Misez directement contre un autre membre, le gagnant rafle la mise (moins la taxe de la maison).\n\n" +
-        "*Chaque partie alimente le jackpot progressif.*"
+        "*La maison garde toujours un avantage. Le jackpot progressif se gagne aux 3× 7️⃣ de la machine à sous.*"
     )
     .addFields({
       name: "💰 Jackpot progressif",
@@ -464,7 +465,6 @@ async function settleBlackjack(client, userId) {
   let status;
   let resultLine;
   let payout = 0;
-  let jackpotHit = false;
 
   if (playerTotal > 21) {
     status = "lose";
@@ -474,10 +474,9 @@ async function settleBlackjack(client, userId) {
     payout = amount;
     resultLine = `🤝 Égalité (blackjack des deux côtés). Mise remboursée (${formatEuro(amount)}).`;
   } else if (isNaturalBJ) {
-    payout = round2(amount * 2.5);
+    payout = round2(amount * 2.2);
     status = "win";
-    resultLine = `🎉 **Blackjack naturel !** Vous gagnez **${formatEuro(payout)}** (x2,5).`;
-    if (Math.random() < 0.15) jackpotHit = true;
+    resultLine = `🎉 **Blackjack naturel !** Vous gagnez **${formatEuro(payout)}** (x2,2 — 6:5).`;
   } else if (dealerTotal > 21) {
     payout = round2(amount * 2);
     status = "win";
@@ -497,19 +496,12 @@ async function settleBlackjack(client, userId) {
 
   if (payout > 0) addFunds(userId, payout);
 
-  let state = loadState();
-  if (jackpotHit) {
-    const won = state.jackpot;
-    addFunds(userId, won);
-    state.jackpot = JACKPOT_SEED;
-    saveState(state);
-    resultLine += `\n\n💥🎉 **BONUS JACKPOT !!!** Vous remportez en plus **${formatEuro(won)}** !`;
-  }
-
   clearBjSession(userId);
   await updateCasinoMessage(client, loadState());
 
-  return buildBlackjackEmbed({ player, dealer, amount, hideDealer: false, status, resultLine });
+  const embed = buildBlackjackEmbed({ player, dealer, amount, hideDealer: false, status, resultLine });
+  embed.addFields({ name: "💰 Votre solde", value: formatEuro(getBalance(userId)), inline: true });
+  return embed;
 }
 
 async function startBlackjack(interaction, client, amount) {
@@ -608,7 +600,8 @@ async function playSlots(interaction, client, amount) {
   const resultEmbed = new EmbedBuilder()
     .setColor(color)
     .setTitle("🎰 Machine à sous")
-    .setDescription(`[ ${line} ]\n\n${resultText}`);
+    .setDescription(`[ ${line} ]\n\n${resultText}`)
+    .addFields({ name: "💰 Votre solde", value: formatEuro(getBalance(interaction.user.id)), inline: true });
   if (isJackpot && IMAGES.slotJackpot) resultEmbed.setImage(IMAGES.slotJackpot);
   else if (IMAGES.slotSpin) resultEmbed.setImage(IMAGES.slotSpin);
 
@@ -649,24 +642,15 @@ async function playRoulette(interaction, client, color, amount) {
   else if (resultColor === "noir" && IMAGES.rouletteNoir) embed.setImage(IMAGES.rouletteNoir);
   else if (IMAGES.rouletteSpin) embed.setImage(IMAGES.rouletteSpin);
 
-  let jackpotHit = false;
   if (color === resultColor) {
     const won = round2(amount * multiplier);
     addFunds(interaction.user.id, won);
     embed.addFields({ name: "Résultat", value: `✅ Gagné ! Vous remportez **${formatEuro(won)}** (x${multiplier}).` });
-    if (resultColor === "vert" && Math.random() < 0.2) jackpotHit = true;
   } else {
     embed.addFields({ name: "Résultat", value: `❌ Perdu. Mise : ${formatEuro(amount)}.` });
   }
 
-  if (jackpotHit) {
-    const state = loadState();
-    const won = state.jackpot;
-    addFunds(interaction.user.id, won);
-    state.jackpot = JACKPOT_SEED;
-    saveState(state);
-    embed.addFields({ name: "💥 Bonus", value: `**JACKPOT !** Vous remportez en plus **${formatEuro(won)}** !` });
-  }
+  embed.addFields({ name: "💰 Votre solde", value: formatEuro(getBalance(interaction.user.id)), inline: true });
 
   await updateCasinoMessage(client, loadState());
   await interaction.editReply({ content: "", embeds: [embed] });
@@ -757,6 +741,11 @@ function saveDuel(duel) {
   if (idx !== -1) state.duels[idx] = duel;
   else state.duels.push(duel);
   saveState(state);
+}
+
+/** Ligne de soldes affichée après un duel (mise à jour automatique /bank). */
+function duelBalanceLine(a, b) {
+  return `\n\n💰 <@${a}> : **${formatEuro(getBalance(a))}** • <@${b}> : **${formatEuro(getBalance(b))}**`;
 }
 
 function buildDuelRow(duelId, disabled = false) {
@@ -952,7 +941,8 @@ async function handleCasinoInteraction(interaction, client) {
           .setTitle("🪙 Pile ou face — Résultat")
           .setDescription(
             `🏆 <@${winnerId}> remporte **${formatEuro(payout)}** !\n` +
-              `😔 <@${loserId}> repart bredouille.`
+              `😔 <@${loserId}> repart bredouille.` +
+              duelBalanceLine(winnerId, loserId)
           )
           .setTimestamp();
         if (IMAGES.duel) resultEmbed.setThumbnail(IMAGES.duel);
@@ -1103,7 +1093,8 @@ async function handleCasinoInteraction(interaction, client) {
           `<@${duel.challengerId}> : ${RPS_EMOJI[a]} **${a}**\n` +
             `<@${duel.opponentId}> : ${RPS_EMOJI[b]} **${b}**\n\n` +
             `🏆 <@${winnerId}> remporte **${formatEuro(payout)}** !\n` +
-            `😔 <@${loserId}> repart bredouille.`
+            `😔 <@${loserId}> repart bredouille.` +
+            duelBalanceLine(winnerId, loserId)
         )
         .setTimestamp();
       await interaction.message.edit({ content: "", embeds: [resultEmbed], components: [] }).catch(() => null);
@@ -1149,7 +1140,8 @@ async function handleCasinoInteraction(interaction, client) {
           .setDescription(
             `${c4Render(duel.board)}\n\n` +
               `🏆 <@${winnerId}> aligne 4 et remporte **${formatEuro(payout)}** !\n` +
-              `😔 <@${loserId}> repart bredouille.`
+              `😔 <@${loserId}> repart bredouille.` +
+              duelBalanceLine(winnerId, loserId)
           )
           .setTimestamp();
         await interaction.update({ content: "", embeds: [embed], components: [] });
@@ -1162,7 +1154,10 @@ async function handleCasinoInteraction(interaction, client) {
         const embed = new EmbedBuilder()
           .setColor(0xf1c40f)
           .setTitle("🔴🟡 Puissance 4 — Match nul")
-          .setDescription(`${c4Render(duel.board)}\n\n🤝 Grille pleine — mises remboursées.`)
+          .setDescription(
+            `${c4Render(duel.board)}\n\n🤝 Grille pleine — mises remboursées.` +
+              duelBalanceLine(duel.challengerId, duel.opponentId)
+          )
           .setTimestamp();
         await interaction.update({ content: "", embeds: [embed], components: [] });
         return true;
@@ -1278,7 +1273,7 @@ async function handleCasinoInteraction(interaction, client) {
       state.duels.push(duel);
       saveState(state);
 
-      const channel = await interaction.guild.channels.fetch(CASINO_CHANNEL_ID).catch(() => null);
+      const channel = await interaction.guild.channels.fetch(DUEL_CHANNEL_ID).catch(() => null);
       if (channel?.isTextBased()) {
         await channel.send({
           content: `<@${opponentId}>`,
@@ -1297,7 +1292,7 @@ async function handleCasinoInteraction(interaction, client) {
       }, DUEL_TIMEOUT_MS);
 
       await interaction.reply({
-        content: `✅ Défi envoyé à <@${opponentId}> pour **${formatEuro(amount)}** dans <#${CASINO_CHANNEL_ID}>.`,
+        content: `✅ Défi envoyé à <@${opponentId}> pour **${formatEuro(amount)}** dans <#${DUEL_CHANNEL_ID}>.`,
         ephemeral: true,
       });
       return true;

@@ -167,6 +167,45 @@ async function handleBankInteraction(interaction, client) {
     return true;
   }
 
+  if (interaction.isChatInputCommand() && interaction.commandName === "delbank") {
+    if (!isFondation(interaction.member)) {
+      await interaction.reply({
+        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut utiliser \`/delbank\`.`,
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const target = interaction.options.getUser("membre", true);
+    const amount = interaction.options.getNumber("montant", true);
+
+    if (amount <= 0) {
+      await interaction.reply({ content: "❌ Le montant doit être positif.", ephemeral: true });
+      return true;
+    }
+
+    const current = getBalance(target.id);
+    const toRemove = Math.min(amount, current); // ne descend jamais sous 0
+    const newBalance = removeFunds(target.id, toRemove);
+
+    await logTransaction(client, {
+      type: "🏦 Retrait manuel (/delbank)",
+      from: target.id,
+      to: interaction.user.id,
+      gross: toRemove,
+      tax: 0,
+      net: toRemove,
+    });
+
+    await interaction.reply({
+      content:
+        `✅ **${formatEuro(toRemove)}** retirés du compte de ${target} (nouveau solde : **${formatEuro(newBalance)}**).` +
+        (toRemove < amount ? `\n⚠️ Le solde ne pouvait pas descendre sous 0, seul ${formatEuro(toRemove)} a été retiré.` : ""),
+      ephemeral: true,
+    });
+    return true;
+  }
+
   if (interaction.isButton() && interaction.customId === BTN_REFRESH_RICHEST) {
     if (!isFondation(interaction.member)) {
       await interaction.reply({
@@ -348,6 +387,23 @@ function registerAddMoneyCommand() {
     .toJSON();
 }
 
+function registerDelMoneyCommand() {
+  return new SlashCommandBuilder()
+    .setName("delbank")
+    .setDescription("Retirer de l'argent du compte d'un membre (Fondation uniquement)")
+    .addUserOption((option) =>
+      option.setName("membre").setDescription("Membre à débiter").setRequired(true)
+    )
+    .addNumberOption((option) =>
+      option
+        .setName("montant")
+        .setDescription("Montant à retirer (€)")
+        .setRequired(true)
+        .setMinValue(0.01)
+    )
+    .toJSON();
+}
+
 function registerClassementSetupCommand() {
   return new SlashCommandBuilder()
     .setName("classement-setup")
@@ -366,6 +422,7 @@ module.exports = {
   handleBankInteraction,
   registerBankCommand,
   registerAddMoneyCommand,
+  registerDelMoneyCommand,
   registerClassementSetupCommand,
   startRichestLeaderboardScheduler,
   DEFAULT_BALANCE,
