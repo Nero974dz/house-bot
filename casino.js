@@ -20,9 +20,30 @@ const STATE_FILE = getStatePath("casino-state.json");
 const JACKPOT_SEED = 1000;
 const BLACKJACK_RAKE = 0.03;
 const ROULETTE_RAKE = 0.03;
+const SLOT_RAKE = 0.03;
 const DUEL_RAKE = 0.05;
 const DUEL_TIMEOUT_MS = 5 * 60 * 1000;
 const BLACKJACK_TIMEOUT_MS = 5 * 60 * 1000;
+
+// Machine à sous : symboles pondérés (plus rare = plus gros gain).
+const SLOT_SYMBOLS = [
+  { emoji: "🍒", weight: 30, multiplier: 1.5 },
+  { emoji: "🍋", weight: 25, multiplier: 2 },
+  { emoji: "🔔", weight: 20, multiplier: 3 },
+  { emoji: "⭐", weight: 15, multiplier: 5 },
+  { emoji: "💎", weight: 8, multiplier: 10 },
+  { emoji: "7️⃣", weight: 2, multiplier: "JACKPOT" },
+];
+
+function pickSlotSymbol() {
+  const total = SLOT_SYMBOLS.reduce((s, sym) => s + sym.weight, 0);
+  let roll = Math.random() * total;
+  for (const sym of SLOT_SYMBOLS) {
+    if (roll < sym.weight) return sym;
+    roll -= sym.weight;
+  }
+  return SLOT_SYMBOLS[0];
+}
 
 /**
  * Images utilisées dans les embeds. Uploadez une image dans un salon Discord,
@@ -34,6 +55,8 @@ const IMAGES = {
   rouletteSpin: "https://www.goforquiz.com/wp-content/uploads/2023/10/casino.gif",
   rouletteRouge: "https://media.giphy.com/media/l2SpYSNrKPONySXYY/giphy.gif",
   rouletteNoir: "https://media1.tenor.com/m/A2DlRFtGcmMAAAAC/rulet.gif",
+  slotSpin: null, // gif de défilement (lien direct .gif requis)
+  slotJackpot: null, // image affichée au jackpot (lien direct requis)
   duel: null,
 };
 
@@ -45,12 +68,14 @@ const SUITS = ["♠️", "♥️", "♦️", "♣️"];
 const BTN = {
   BLACKJACK: "casino_blackjack",
   ROULETTE: "casino_roulette",
+  SLOTS: "casino_slots",
   DUEL: "casino_duel",
   BJ_HIT: "casino_bj_hit",
   BJ_STAND: "casino_bj_stand",
 };
 const ROULETTE_COLOR_PREFIX = "casino_roulette_color_";
 const MODAL_BLACKJACK = "casino_modal_blackjack";
+const MODAL_SLOTS = "casino_modal_slots";
 const MODAL_ROULETTE_PREFIX = "casino_modal_roulette_";
 const MODAL_DUEL_PREFIX = "casino_modal_duel_"; // + game:opponentId
 const SELECT_DUEL_OPPONENT = "casino_select_opponent";
@@ -206,8 +231,9 @@ function buildCasinoEmbed(state) {
       "Bienvenue au casino ! Votre solde vient de **`/bank`**.\n\n" +
         "🃏 **Blackjack** — battez le croupier sans dépasser 21. Blackjack naturel = x2,5 (et une chance de faire tomber le jackpot).\n" +
         "🎡 **Roulette** — Rouge/Noir (x2) ou Vert (x14, avec une chance de jackpot en plus).\n" +
+        "🎰 **Machine à sous** — 3 symboles, plus rare = plus gros gain. Trois 7️⃣ font tomber le **jackpot** !\n" +
         "⚔️ **Défi** — Misez directement contre un autre membre, le gagnant rafle la mise (moins la taxe de la maison).\n\n" +
-        "*Chaque partie de blackjack et de roulette alimente le jackpot progressif.*"
+        "*Chaque partie alimente le jackpot progressif.*"
     )
     .addFields({
       name: "💰 Jackpot progressif",
@@ -231,6 +257,11 @@ function buildCasinoComponents() {
         .setCustomId(BTN.ROULETTE)
         .setLabel("Roulette")
         .setEmoji("🎡")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(BTN.SLOTS)
+        .setLabel("Machine à sous")
+        .setEmoji("🎰")
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId(BTN.DUEL)
@@ -512,6 +543,79 @@ async function startBlackjack(interaction, client, amount) {
   });
 }
 
+// --- Machine à sous ---
+
+async function playSlots(interaction, client, amount) {
+  if (!hasEnough(interaction.user.id, amount)) {
+    await interaction.editReply({ content: "❌ Solde insuffisant. Vérifiez `/bank`." });
+    return;
+  }
+
+  removeFunds(interaction.user.id, amount);
+  addJackpot(round2(amount * SLOT_RAKE));
+
+  const spinEmbed = (line) => {
+    const e = new EmbedBuilder()
+      .setColor(0xe91e63)
+      .setTitle("🎰 Machine à sous")
+      .setDescription(`[ ${line} ]\nÇa tourne…`);
+    if (IMAGES.slotSpin) e.setImage(IMAGES.slotSpin);
+    return e;
+  };
+
+  await interaction.editReply({ content: "", embeds: [spinEmbed("❓ | ❓ | ❓")] });
+  await sleep(800);
+
+  const reels = [pickSlotSymbol(), pickSlotSymbol(), pickSlotSymbol()];
+  await interaction.editReply({ embeds: [spinEmbed(`${reels[0].emoji} | ❓ | ❓`)] });
+  await sleep(800);
+  await interaction.editReply({ embeds: [spinEmbed(`${reels[0].emoji} | ${reels[1].emoji} | ❓`)] });
+  await sleep(800);
+
+  const line = reels.map((r) => r.emoji).join(" | ");
+  const allSame = reels[0].emoji === reels[1].emoji && reels[1].emoji === reels[2].emoji;
+  const twoSame =
+    reels[0].emoji === reels[1].emoji ||
+    reels[1].emoji === reels[2].emoji ||
+    reels[0].emoji === reels[2].emoji;
+
+  let resultText;
+  let isJackpot = false;
+  let color = 0xe74c3c;
+
+  if (allSame && reels[0].multiplier === "JACKPOT") {
+    const state = loadState();
+    const won = state.jackpot;
+    addFunds(interaction.user.id, won);
+    state.jackpot = JACKPOT_SEED;
+    saveState(state);
+    resultText = `💥🎉 **JACKPOT !!!** 🎉💥\nVous remportez **${formatEuro(won)}** !`;
+    isJackpot = true;
+    color = 0xf1c40f;
+  } else if (allSame) {
+    const won = round2(amount * reels[0].multiplier);
+    addFunds(interaction.user.id, won);
+    resultText = `✅ Trois **${reels[0].emoji}** ! Vous gagnez **${formatEuro(won)}** (x${reels[0].multiplier}).`;
+    color = 0x2ecc71;
+  } else if (twoSame) {
+    addFunds(interaction.user.id, amount);
+    resultText = `➖ Paire ! Mise remboursée (${formatEuro(amount)}).`;
+    color = 0x95a5a6;
+  } else {
+    resultText = `❌ Perdu. Mise : ${formatEuro(amount)}.`;
+  }
+
+  const resultEmbed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle("🎰 Machine à sous")
+    .setDescription(`[ ${line} ]\n\n${resultText}`);
+  if (isJackpot && IMAGES.slotJackpot) resultEmbed.setImage(IMAGES.slotJackpot);
+  else if (IMAGES.slotSpin) resultEmbed.setImage(IMAGES.slotSpin);
+
+  await updateCasinoMessage(client, loadState());
+  await interaction.editReply({ embeds: [resultEmbed] });
+}
+
 // --- Roulette ---
 
 async function playRoulette(interaction, client, color, amount) {
@@ -699,6 +803,11 @@ async function handleCasinoInteraction(interaction, client) {
         return true;
       }
       await interaction.showModal(buildAmountModal(MODAL_BLACKJACK, "🃏 Blackjack"));
+      return true;
+    }
+
+    if (interaction.customId === BTN.SLOTS) {
+      await interaction.showModal(buildAmountModal(MODAL_SLOTS, "🎰 Machine à sous"));
       return true;
     }
 
@@ -1117,6 +1226,17 @@ async function handleCasinoInteraction(interaction, client) {
       }
       await interaction.deferReply({ ephemeral: true });
       await startBlackjack(interaction, client, amount);
+      return true;
+    }
+
+    if (interaction.customId === MODAL_SLOTS) {
+      const amount = parseAmount(interaction.fields.getTextInputValue("montant"));
+      if (!amount || amount <= 0 || Number.isNaN(amount)) {
+        await interaction.reply({ content: "❌ Montant invalide.", ephemeral: true });
+        return true;
+      }
+      await interaction.deferReply({ ephemeral: true });
+      await playSlots(interaction, client, amount);
       return true;
     }
 
