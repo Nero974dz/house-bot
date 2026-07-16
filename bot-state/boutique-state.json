@@ -8,14 +8,6 @@
       "price": "600",
       "description": "Neuf",
       "createdAt": 1784170566063
-    },
-    {
-      "id": "item_1784207154254",
-      "sellerId": "1363979726418608148",
-      "name": "test",
-      "price": "test",
-      "description": "test",
-      "createdAt": 1784207154254
     }
   ],
   "pending": {},
