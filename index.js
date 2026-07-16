@@ -82,6 +82,7 @@ const { handleBankInteraction, startRichestLeaderboardScheduler } = require("./b
 const { handleParisInteraction } = require("./paris");
 const { handleSend1Interaction } = require("./send1");
 const { handleCasinoInteraction } = require("./casino");
+const { handleLicenseInteraction } = require("./license");
 const { setupReopeningAnnouncement } = require("./annonce");
 
 const TICKET_TYPES = {
@@ -710,6 +711,7 @@ client.once("ready", async () => {
       "bank-state.json",
       "paris-state.json",
       "casino-state.json",
+      "license-state.json",
     ]);
     console.log("Synchronisation terminée.");
   } else {
@@ -759,6 +761,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (await handleParisInteraction(interaction, client)) return;
   if (await handleSend1Interaction(interaction)) return;
   if (await handleCasinoInteraction(interaction, client)) return;
+  if (await handleLicenseInteraction(interaction, client)) return;
   if (await handleMissionInteraction(interaction, client)) return;
   if (await handleShopInteraction(interaction, client)) return;
   if (await handleSignalementInteraction(interaction, client)) return;

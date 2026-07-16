@@ -9,6 +9,7 @@ const {
 const { registerParisCommand } = require("./paris");
 const { registerSend1Command } = require("./send1");
 const { registerCasinoCommand } = require("./casino");
+const { registerLicenseCommand, registerTabLicenseCommand } = require("./license");
 
 async function registerSlashCommands(client, token) {
   const commands = [
@@ -57,6 +58,8 @@ async function registerSlashCommands(client, token) {
     registerParisCommand(),
     registerSend1Command(),
     registerCasinoCommand(),
+    registerLicenseCommand(),
+    registerTabLicenseCommand(),
   ];
 
   const rest = new REST({ version: "10" }).setToken(token);
@@ -70,7 +73,7 @@ async function registerSlashCommands(client, token) {
       );
   }
   console.log(
-    "Commandes /achat, /report, /crédit, /mission, /chat, /correctif, /bank, /addmoney, /delbank, /virement, /classement-setup, /pari-setup, /send1 et /casino-setup enregistrées"
+    "Commandes /achat, /report, /crédit, /mission, /chat, /correctif, /bank, /addmoney, /delbank, /virement, /classement-setup, /pari-setup, /send1, /casino-setup, /license et /tablicense enregistrées"
   );
 }
 
