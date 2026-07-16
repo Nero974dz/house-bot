@@ -10,11 +10,15 @@ const path = require("path");
  *
  * Variables d'environnement nécessaires (à définir sur Railway) :
  * - GITHUB_TOKEN : token d'accès personnel avec permission "Contents: Read & Write"
- * - GITHUB_REPO  : "utilisateur/nom-du-repo" (ex: "Azk/house-bot-main")
- * - GITHUB_BRANCH (optionnel, défaut "main")
+ * - GITHUB_REPO  : "utilisateur/nom-du-repo" (ex: "Nero974dz/house-bot")
+ * - GITHUB_DATA_BRANCH (optionnel, défaut "bot-data")
  *
- * Si ces variables ne sont pas définies, le bot fonctionne comme avant
- * (fichiers locaux uniquement, perdus au redémarrage).
+ * Les données sont stockées sur une branche SÉPARÉE ("bot-data") de la branche
+ * de code, pour que les sauvegardes du bot ne déclenchent pas de redéploiement
+ * Railway en boucle. Cette branche est créée automatiquement au démarrage.
+ *
+ * Si GITHUB_TOKEN/GITHUB_REPO ne sont pas définis, le bot fonctionne en local
+ * uniquement (données perdues au redémarrage).
  */
 
 const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH || process.env.DATA_DIR || __dirname;
@@ -23,9 +27,13 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPO;
 const GITHUB_STATE_DIR = "bot-state";
 
-// Branche effective : détectée automatiquement au démarrage (defaut du repo),
-// sinon celle forcée par GITHUB_BRANCH, sinon "main".
+// Branche de code (celle que Railway déploie) : détectée automatiquement au démarrage.
 let GITHUB_BRANCH = process.env.GITHUB_BRANCH || "main";
+
+// Branche DÉDIÉE aux données. IMPORTANT : elle est différente de la branche de
+// code pour que les sauvegardes du bot ne déclenchent PAS de redéploiement Railway
+// (Railway surveille la branche de code, pas celle-ci).
+const DATA_BRANCH = process.env.GITHUB_DATA_BRANCH || "bot-data";
 
 const GITHUB_ENABLED = Boolean(GITHUB_TOKEN && GITHUB_REPO);
 
@@ -48,7 +56,7 @@ function githubHeaders() {
 async function pullStateFile(filename) {
   if (!GITHUB_ENABLED) return;
   try {
-    const res = await fetch(`${githubUrl(filename)}?ref=${GITHUB_BRANCH}`, {
+    const res = await fetch(`${githubUrl(filename)}?ref=${DATA_BRANCH}`, {
       headers: githubHeaders(),
     });
     if (res.status === 404) return; // pas encore de sauvegarde, on garde le défaut local
@@ -81,7 +89,7 @@ async function pushStateFile(filename) {
   const contentB64 = Buffer.from(content, "utf8").toString("base64");
 
   let sha;
-  const existing = await fetch(`${githubUrl(filename)}?ref=${GITHUB_BRANCH}`, {
+  const existing = await fetch(`${githubUrl(filename)}?ref=${DATA_BRANCH}`, {
     headers: githubHeaders(),
   });
   if (existing.ok) {
@@ -94,7 +102,7 @@ async function pushStateFile(filename) {
     body: JSON.stringify({
       message: `sync: ${filename}`,
       content: contentB64,
-      branch: GITHUB_BRANCH,
+      branch: DATA_BRANCH,
       ...(sha ? { sha } : {}),
     }),
   });
@@ -146,23 +154,55 @@ async function testGithubWrite() {
     }
 
     const repoInfo = await repoRes.json();
-    if (repoInfo.default_branch && repoInfo.default_branch !== GITHUB_BRANCH) {
-      console.log(
-        `ℹ️ Branche par défaut détectée : "${repoInfo.default_branch}" (au lieu de "${GITHUB_BRANCH}"). Utilisation de "${repoInfo.default_branch}".`
-      );
+    if (repoInfo.default_branch) {
       GITHUB_BRANCH = repoInfo.default_branch;
     }
-    console.log(`ℹ️ Lecture du dépôt OK (${GITHUB_REPO}, branche ${GITHUB_BRANCH}).`);
+    console.log(`ℹ️ Lecture du dépôt OK (${GITHUB_REPO}, branche de code : ${GITHUB_BRANCH}).`);
   } catch (err) {
     console.error("❌ GitHub : erreur réseau lecture dépôt :", err.message);
     return;
   }
 
-  // Étape 2 : test d'écriture
+  // Étape 2 : s'assurer que la branche de données existe (créée depuis la branche de code)
+  try {
+    const dataRef = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/git/ref/heads/${DATA_BRANCH}`,
+      { headers: githubHeaders() }
+    );
+    if (dataRef.status === 404) {
+      // créer bot-data à partir du dernier commit de la branche de code
+      const codeRef = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO}/git/ref/heads/${GITHUB_BRANCH}`,
+        { headers: githubHeaders() }
+      );
+      if (!codeRef.ok) {
+        console.error(`❌ GitHub : impossible de lire la branche de code pour créer "${DATA_BRANCH}".`);
+        return;
+      }
+      const codeSha = (await codeRef.json()).object.sha;
+      const create = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/git/refs`, {
+        method: "POST",
+        headers: githubHeaders(),
+        body: JSON.stringify({ ref: `refs/heads/${DATA_BRANCH}`, sha: codeSha }),
+      });
+      if (create.ok) {
+        console.log(`✅ Branche de données "${DATA_BRANCH}" créée.`);
+      } else {
+        const body = await create.text().catch(() => "");
+        console.error(`❌ GitHub : création branche "${DATA_BRANCH}" échouée HTTP ${create.status} : ${body.slice(0, 200)}`);
+        return;
+      }
+    }
+  } catch (err) {
+    console.error("❌ GitHub : erreur préparation branche de données :", err.message);
+    return;
+  }
+
+  // Étape 3 : test d'écriture sur la branche de données
   try {
     const url = githubUrl(".sync-check");
     let sha;
-    const existing = await fetch(`${url}?ref=${GITHUB_BRANCH}`, { headers: githubHeaders() });
+    const existing = await fetch(`${url}?ref=${DATA_BRANCH}`, { headers: githubHeaders() });
     if (existing.ok) sha = (await existing.json()).sha;
 
     const res = await fetch(url, {
@@ -171,13 +211,15 @@ async function testGithubWrite() {
       body: JSON.stringify({
         message: "sync: test écriture",
         content: Buffer.from(`ok ${new Date().toISOString()}`).toString("base64"),
-        branch: GITHUB_BRANCH,
+        branch: DATA_BRANCH,
         ...(sha ? { sha } : {}),
       }),
     });
 
     if (res.ok) {
-      console.log(`✅ Sauvegarde GitHub opérationnelle (repo ${GITHUB_REPO}, branche ${GITHUB_BRANCH}).`);
+      console.log(
+        `✅ Sauvegarde GitHub opérationnelle (données sur la branche "${DATA_BRANCH}", séparée du code → pas de redéploiement en boucle).`
+      );
     } else {
       const body = await res.text().catch(() => "");
       console.error(

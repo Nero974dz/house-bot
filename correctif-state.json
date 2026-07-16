@@ -16,7 +16,8 @@
     { "text": "Le bot démarre maintenant directement via node (au lieu de npm start) pour que Railway puisse lui envoyer le signal d'arrêt correctement et laisser les sauvegardes se terminer.", "addedAt": 1752710400000 },
     { "text": "Nouvelle commande /classement-setup (Fondation) pour republier le classement des plus riches à tout moment, sans attendre un redémarrage du bot.", "addedAt": 1752796800000 },
     { "text": "Casino Blackjack : les parties en cours sont maintenant sauvegardées et survivent à un redémarrage du bot (fini le \"Aucune partie en cours\" avec la mise perdue).", "addedAt": 1752796800000 },
-    { "text": "Défis du casino : on choisit désormais un mini-jeu contre l'adversaire — Pile ou face, Pierre-Feuille-Ciseaux, ou Puissance 4 (grille jouable au tour par tour). Le gagnant remporte les mises (moins la taxe), égalité = remboursement.", "addedAt": 1752796800000 }
+    { "text": "Défis du casino : on choisit désormais un mini-jeu contre l'adversaire — Pile ou face, Pierre-Feuille-Ciseaux, ou Puissance 4 (grille jouable au tour par tour). Le gagnant remporte les mises (moins la taxe), égalité = remboursement.", "addedAt": 1752796800000 },
+    { "text": "Correction majeure : les sauvegardes du bot vont désormais sur une branche GitHub séparée (bot-data), ce qui arrête la boucle de redéploiements Railway déclenchée par chaque sauvegarde.", "addedAt": 1752796800000 }
   ],
   "history": [
     {
