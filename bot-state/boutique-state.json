@@ -94,7 +94,7 @@
       "buyerId": "1390507432555581583",
       "sellerId": "1390508824846139453",
       "buyerConfirmed": true,
-      "sellerConfirmed": false,
+      "sellerConfirmed": true,
       "channelId": "1527408960787845241",
       "status": "open",
       "createdAt": 1784233073951
