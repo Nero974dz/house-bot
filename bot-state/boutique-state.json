@@ -96,8 +96,9 @@
       "buyerConfirmed": true,
       "sellerConfirmed": true,
       "channelId": "1527408960787845241",
-      "status": "open",
-      "createdAt": 1784233073951
+      "status": "closed",
+      "createdAt": 1784233073951,
+      "closedAt": 1784233332977
     },
     "trade_1784233079998": {
       "item": {
@@ -109,7 +110,7 @@
       "buyerId": "1390507432555581583",
       "sellerId": "1390508824846139453",
       "buyerConfirmed": true,
-      "sellerConfirmed": false,
+      "sellerConfirmed": true,
       "channelId": "1527408986469437570",
       "status": "open",
       "createdAt": 1784233079998
