@@ -14,7 +14,8 @@
     { "text": "Suppression complète du système XP/niveaux (/niveau, rôles de niveau, classement \"Plus actifs\", détection d'insultes liée).", "addedAt": 1752710400000 },
     { "text": "Correction : bank-state.json, paris-state.json et casino-state.json n'étaient jamais retéléchargés depuis GitHub au démarrage — c'était la vraie cause de la perte des soldes /bank après redémarrage.", "addedAt": 1752710400000 },
     { "text": "Le bot démarre maintenant directement via node (au lieu de npm start) pour que Railway puisse lui envoyer le signal d'arrêt correctement et laisser les sauvegardes se terminer.", "addedAt": 1752710400000 },
-    { "text": "Nouvelle commande /classement-setup (Fondation) pour republier le classement des plus riches à tout moment, sans attendre un redémarrage du bot.", "addedAt": 1752796800000 }
+    { "text": "Nouvelle commande /classement-setup (Fondation) pour republier le classement des plus riches à tout moment, sans attendre un redémarrage du bot.", "addedAt": 1752796800000 },
+    { "text": "Casino Blackjack : les parties en cours sont maintenant sauvegardées et survivent à un redémarrage du bot (fini le \"Aucune partie en cours\" avec la mise perdue).", "addedAt": 1752796800000 }
   ],
   "history": [
     {

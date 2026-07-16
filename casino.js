@@ -57,8 +57,6 @@ const SELECT_DUEL_OPPONENT = "casino_select_opponent";
 const DUEL_ACCEPT_PREFIX = "casino_duel_accept_";
 const DUEL_DECLINE_PREFIX = "casino_duel_decline_";
 
-const blackjackSessions = new Map();
-
 function isFondation(member) {
   return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
 }
@@ -68,9 +66,30 @@ function loadState() {
     const data = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
     if (typeof data.jackpot !== "number") data.jackpot = JACKPOT_SEED;
     if (!Array.isArray(data.duels)) data.duels = [];
+    if (!data.blackjack || typeof data.blackjack !== "object") data.blackjack = {};
     return data;
   } catch {
-    return { messageId: null, jackpot: JACKPOT_SEED, duels: [] };
+    return { messageId: null, jackpot: JACKPOT_SEED, duels: [], blackjack: {} };
+  }
+}
+
+// --- Sessions blackjack persistées (survivent aux redémarrages) ---
+function getBjSession(userId) {
+  const state = loadState();
+  return state.blackjack[userId] || null;
+}
+
+function setBjSession(userId, session) {
+  const state = loadState();
+  state.blackjack[userId] = session;
+  saveState(state);
+}
+
+function removeBjSession(userId) {
+  const state = loadState();
+  if (state.blackjack[userId]) {
+    delete state.blackjack[userId];
+    saveState(state);
   }
 }
 
@@ -299,24 +318,32 @@ function buildBlackjackRow(disabled = false) {
   );
 }
 
+// Handles de timeout gardés en mémoire (best-effort ; perdus au redémarrage,
+// mais la partie elle-même est persistée dans casino-state.json).
+const bjTimeouts = new Map();
+
 function clearBjSession(userId) {
-  const session = blackjackSessions.get(userId);
-  if (session?.timeout) clearTimeout(session.timeout);
-  blackjackSessions.delete(userId);
+  const timeout = bjTimeouts.get(userId);
+  if (timeout) {
+    clearTimeout(timeout);
+    bjTimeouts.delete(userId);
+  }
+  removeBjSession(userId);
 }
 
 function scheduleBjTimeout(userId, respondTimeout) {
-  const session = blackjackSessions.get(userId);
-  if (!session) return;
-  session.timeout = setTimeout(async () => {
-    if (!blackjackSessions.has(userId)) return;
+  const existing = bjTimeouts.get(userId);
+  if (existing) clearTimeout(existing);
+  const timeout = setTimeout(async () => {
+    if (!getBjSession(userId)) return;
     await respondTimeout(userId).catch(() => null);
   }, BLACKJACK_TIMEOUT_MS);
+  bjTimeouts.set(userId, timeout);
 }
 
 /** Résout la partie (push/win/lose) et paie. Renvoie {embed, jackpotHit}. */
 async function settleBlackjack(client, userId) {
-  const session = blackjackSessions.get(userId);
+  const session = getBjSession(userId);
   const { player, dealer, amount } = session;
   const playerTotal = handTotal(player);
   const dealerTotal = handTotal(dealer);
@@ -386,7 +413,7 @@ async function startBlackjack(interaction, client, amount) {
   const player = [deck.pop(), deck.pop()];
   const dealer = [deck.pop(), deck.pop()];
 
-  blackjackSessions.set(interaction.user.id, { deck, player, dealer, amount });
+  setBjSession(interaction.user.id, { deck, player, dealer, amount });
   scheduleBjTimeout(interaction.user.id, async (userId) => {
     const embed = await settleBlackjack(client, userId);
     await interaction.editReply({ embeds: [embed], components: [] }).catch(() => null);
@@ -512,7 +539,7 @@ async function handleCasinoInteraction(interaction, client) {
 
   if (interaction.isButton()) {
     if (interaction.customId === BTN.BLACKJACK) {
-      if (blackjackSessions.has(interaction.user.id)) {
+      if (getBjSession(interaction.user.id)) {
         await interaction.reply({
           content: "❌ Vous avez déjà une partie de blackjack en cours.",
           ephemeral: true,
@@ -524,13 +551,14 @@ async function handleCasinoInteraction(interaction, client) {
     }
 
     if (interaction.customId === BTN.BJ_HIT) {
-      const session = blackjackSessions.get(interaction.user.id);
+      const session = getBjSession(interaction.user.id);
       if (!session) {
         await interaction.reply({ content: "❌ Aucune partie en cours.", ephemeral: true });
         return true;
       }
 
       session.player.push(session.deck.pop());
+      setBjSession(interaction.user.id, session);
       const total = handTotal(session.player);
 
       if (total > 21) {
@@ -555,7 +583,7 @@ async function handleCasinoInteraction(interaction, client) {
     }
 
     if (interaction.customId === BTN.BJ_STAND) {
-      const session = blackjackSessions.get(interaction.user.id);
+      const session = getBjSession(interaction.user.id);
       if (!session) {
         await interaction.reply({ content: "❌ Aucune partie en cours.", ephemeral: true });
         return true;
@@ -564,6 +592,7 @@ async function handleCasinoInteraction(interaction, client) {
       while (handTotal(session.dealer) < 17) {
         session.dealer.push(session.deck.pop());
       }
+      setBjSession(interaction.user.id, session);
 
       const embed = await settleBlackjack(client, interaction.user.id);
       await interaction.update({ embeds: [embed], components: [] });
