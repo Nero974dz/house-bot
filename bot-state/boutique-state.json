@@ -10,14 +10,6 @@
       "createdAt": 1784170566063
     },
     {
-      "id": "item_1784229006401",
-      "sellerId": "1390508824846139453",
-      "name": "Montre Heure H, Mini modèle, 21 mm",
-      "price": "1600",
-      "description": "Semi Neuf",
-      "createdAt": 1784229006401
-    },
-    {
       "id": "item_1784229203034",
       "sellerId": "1390508824846139453",
       "name": "Lunette Meta",
@@ -105,6 +97,21 @@
       "channelId": "1527408960787845241",
       "status": "open",
       "createdAt": 1784233073951
+    },
+    "trade_1784233079998": {
+      "item": {
+        "name": "Montre Heure H, Mini modèle, 21 mm",
+        "price": "1600",
+        "description": "Semi Neuf"
+      },
+      "itemId": "item_1784229006401",
+      "buyerId": "1390507432555581583",
+      "sellerId": "1390508824846139453",
+      "buyerConfirmed": true,
+      "sellerConfirmed": false,
+      "channelId": "1527408986469437570",
+      "status": "open",
+      "createdAt": 1784233079998
     }
   }
 }
