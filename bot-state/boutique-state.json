@@ -18,14 +18,6 @@
       "createdAt": 1784229006401
     },
     {
-      "id": "item_1784229093570",
-      "sellerId": "1390508824846139453",
-      "name": "Hermes Oran blanc",
-      "price": "350",
-      "description": "Semi neuf",
-      "createdAt": 1784229093570
-    },
-    {
       "id": "item_1784229172466",
       "sellerId": "1390508824846139453",
       "name": "Ipad 11",
@@ -91,6 +83,21 @@
       "status": "closed",
       "createdAt": 1784207208730,
       "closedAt": 1784207223149
+    },
+    "trade_1784233057231": {
+      "item": {
+        "name": "Hermes Oran blanc",
+        "price": "350",
+        "description": "Semi neuf"
+      },
+      "itemId": "item_1784229093570",
+      "buyerId": "1390507432555581583",
+      "sellerId": "1390508824846139453",
+      "buyerConfirmed": true,
+      "sellerConfirmed": false,
+      "channelId": "1527408890507952218",
+      "status": "open",
+      "createdAt": 1784233057231
     }
   }
 }
