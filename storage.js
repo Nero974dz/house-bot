@@ -81,7 +81,7 @@ async function pullAllStateFiles(filenames) {
   }
 }
 
-async function pushStateFile(filename) {
+async function pushStateFile(filename, attempt = 0) {
   if (!GITHUB_ENABLED) return;
   const filePath = getStatePath(filename);
   if (!fs.existsSync(filePath)) return;
@@ -106,6 +106,11 @@ async function pushStateFile(filename) {
       ...(sha ? { sha } : {}),
     }),
   });
+
+  // 409 = SHA périmé (deux écritures concurrentes du même fichier) : on refait avec un SHA frais
+  if (res.status === 409 && attempt < 5) {
+    return pushStateFile(filename, attempt + 1);
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -233,6 +238,9 @@ async function testGithubWrite() {
 }
 
 const pendingWrites = new Set();
+// Chaîne de promesses par fichier : les sauvegardes d'un même fichier sont
+// sérialisées (jamais deux GET/PUT en parallèle sur le même) → évite les 409.
+const pushLocks = new Map();
 
 /**
  * À appeler juste après fs.writeFileSync dans chaque saveState(). Fire-and-forget,
@@ -241,10 +249,17 @@ const pendingWrites = new Set();
  * après une écriture peut perdre le changement si l'envoi GitHub n'est pas terminé.
  */
 function persistState(filename) {
-  const promise = pushStateFile(filename)
-    .catch((err) => console.warn(`Sync GitHub (push ${filename}):`, err.message))
-    .finally(() => pendingWrites.delete(promise));
-  pendingWrites.add(promise);
+  const prev = pushLocks.get(filename) || Promise.resolve();
+  const next = prev
+    .catch(() => {})
+    .then(() => pushStateFile(filename))
+    .catch((err) => console.warn(`Sync GitHub (push ${filename}):`, err.message));
+  pushLocks.set(filename, next);
+  pendingWrites.add(next);
+  next.finally(() => {
+    pendingWrites.delete(next);
+    if (pushLocks.get(filename) === next) pushLocks.delete(filename);
+  });
 }
 
 /** Attend que tous les envois GitHub en cours se terminent (avec un délai maximum). */
