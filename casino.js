@@ -76,7 +76,8 @@ const BTN = {
 };
 const ROULETTE_COLOR_PREFIX = "casino_roulette_color_";
 const MODAL_BLACKJACK = "casino_modal_blackjack";
-const MODAL_SLOTS = "casino_modal_slots";
+const SLOT_SPINS_PREFIX = "casino_slotspins_"; // + nombre de tours
+const MODAL_SLOTS_PREFIX = "casino_modal_slots_"; // + nombre de tours
 const MODAL_ROULETTE_PREFIX = "casino_modal_roulette_";
 const MODAL_DUEL_PREFIX = "casino_modal_duel_"; // + game:opponentId
 const SELECT_DUEL_OPPONENT = "casino_select_opponent";
@@ -232,7 +233,7 @@ function buildCasinoEmbed(state) {
       "Bienvenue au casino ! Votre solde vient de **`/bank`**.\n\n" +
         "🃏 **Blackjack** — battez le croupier sans dépasser 21. Blackjack naturel payé 6:5 (x2,2).\n" +
         "🎡 **Roulette** — Rouge/Noir (x2) ou Vert (x14).\n" +
-        "🎰 **Machine à sous** — 3 symboles, plus rare = plus gros gain. Trois 7️⃣ font tomber le **jackpot** !\n" +
+        "🎰 **Machine à sous** — 3 symboles, plus rare = plus gros gain. Enchaînez **x5 / x10 tours** d'un coup. Trois 7️⃣ font tomber le **jackpot** !\n" +
         "⚔️ **Défi** — Misez directement contre un autre membre, le gagnant rafle la mise (moins la taxe de la maison).\n\n" +
         "*La maison garde toujours un avantage. Le jackpot progressif se gagne aux 3× 7️⃣ de la machine à sous.*"
     )
@@ -314,7 +315,7 @@ async function setupCasinoPanel(client) {
   await updateCasinoMessage(client, state);
 }
 
-function buildAmountModal(customId, title) {
+function buildAmountModal(customId, title, label = "Montant à miser (€)") {
   return new ModalBuilder()
     .setCustomId(customId)
     .setTitle(title)
@@ -322,7 +323,7 @@ function buildAmountModal(customId, title) {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("montant")
-          .setLabel("Montant à miser (€)")
+          .setLabel(label)
           .setPlaceholder("Ex. 50")
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
@@ -537,73 +538,169 @@ async function startBlackjack(interaction, client, amount) {
 
 // --- Machine à sous ---
 
-async function playSlots(interaction, client, amount) {
-  if (!hasEnough(interaction.user.id, amount)) {
-    await interaction.editReply({ content: "❌ Solde insuffisant. Vérifiez `/bank`." });
-    return;
-  }
+function buildSlotSpinsRow() {
+  return new ActionRowBuilder().addComponents(
+    [1, 5, 10].map((n) =>
+      new ButtonBuilder()
+        .setCustomId(`${SLOT_SPINS_PREFIX}${n}`)
+        .setLabel(n === 1 ? "1 tour" : `x${n} tours`)
+        .setEmoji("🎰")
+        .setStyle(n === 1 ? ButtonStyle.Secondary : ButtonStyle.Primary)
+    )
+  );
+}
 
-  removeFunds(interaction.user.id, amount);
-  addJackpot(round2(amount * SLOT_RAKE));
-
-  const spinEmbed = (line) => {
-    const e = new EmbedBuilder()
-      .setColor(0xe91e63)
-      .setTitle("🎰 Machine à sous")
-      .setDescription(`[ ${line} ]\nÇa tourne…`);
-    if (IMAGES.slotSpin) e.setImage(IMAGES.slotSpin);
-    return e;
-  };
-
-  await interaction.editReply({ content: "", embeds: [spinEmbed("❓ | ❓ | ❓")] });
-  await sleep(800);
-
+/** Tire 3 rouleaux et calcule le gain (hors jackpot, traité par l'appelant). */
+function resolveSpin(amount) {
   const reels = [pickSlotSymbol(), pickSlotSymbol(), pickSlotSymbol()];
-  await interaction.editReply({ embeds: [spinEmbed(`${reels[0].emoji} | ❓ | ❓`)] });
-  await sleep(800);
-  await interaction.editReply({ embeds: [spinEmbed(`${reels[0].emoji} | ${reels[1].emoji} | ❓`)] });
-  await sleep(800);
-
-  const line = reels.map((r) => r.emoji).join(" | ");
   const allSame = reels[0].emoji === reels[1].emoji && reels[1].emoji === reels[2].emoji;
   const twoSame =
     reels[0].emoji === reels[1].emoji ||
     reels[1].emoji === reels[2].emoji ||
     reels[0].emoji === reels[2].emoji;
 
-  let resultText;
-  let isJackpot = false;
-  let color = 0xe74c3c;
-
   if (allSame && reels[0].multiplier === "JACKPOT") {
-    const state = loadState();
-    const won = state.jackpot;
-    addFunds(interaction.user.id, won);
-    state.jackpot = JACKPOT_SEED;
-    saveState(state);
-    resultText = `💥🎉 **JACKPOT !!!** 🎉💥\nVous remportez **${formatEuro(won)}** !`;
-    isJackpot = true;
-    color = 0xf1c40f;
-  } else if (allSame) {
-    const won = round2(amount * reels[0].multiplier);
-    addFunds(interaction.user.id, won);
-    resultText = `✅ Trois **${reels[0].emoji}** ! Vous gagnez **${formatEuro(won)}** (x${reels[0].multiplier}).`;
-    color = 0x2ecc71;
-  } else if (twoSame) {
-    addFunds(interaction.user.id, amount);
-    resultText = `➖ Paire ! Mise remboursée (${formatEuro(amount)}).`;
-    color = 0x95a5a6;
-  } else {
-    resultText = `❌ Perdu. Mise : ${formatEuro(amount)}.`;
+    return { reels, won: 0, isJackpot: true, kind: "jackpot" };
   }
+  if (allSame) {
+    return { reels, won: round2(amount * reels[0].multiplier), isJackpot: false, kind: "triple" };
+  }
+  if (twoSame) {
+    return { reels, won: amount, isJackpot: false, kind: "paire" };
+  }
+  return { reels, won: 0, isJackpot: false, kind: "perdu" };
+}
+
+/** Verse le jackpot au joueur et le réinitialise. Renvoie le montant gagné. */
+function awardJackpot(userId) {
+  const state = loadState();
+  const won = state.jackpot;
+  addFunds(userId, won);
+  state.jackpot = JACKPOT_SEED;
+  saveState(state);
+  return won;
+}
+
+async function playSlots(interaction, client, amount, spins = 1) {
+  const totalStake = round2(amount * spins);
+
+  if (!hasEnough(interaction.user.id, totalStake)) {
+    await interaction.editReply({
+      content: `❌ Solde insuffisant : il faut **${formatEuro(totalStake)}** pour ${spins} tour(s). Vérifiez \`/bank\`.`,
+    });
+    return;
+  }
+
+  removeFunds(interaction.user.id, totalStake);
+  addJackpot(round2(totalStake * SLOT_RAKE));
+
+  // --- Un seul tour : avec animation ---
+  if (spins === 1) {
+    const spinEmbed = (line) => {
+      const e = new EmbedBuilder()
+        .setColor(0xe91e63)
+        .setTitle("🎰 Machine à sous")
+        .setDescription(`[ ${line} ]\nÇa tourne…`);
+      if (IMAGES.slotSpin) e.setImage(IMAGES.slotSpin);
+      return e;
+    };
+
+    await interaction.editReply({ content: "", embeds: [spinEmbed("❓ | ❓ | ❓")] });
+    await sleep(800);
+
+    const spin = resolveSpin(amount);
+    const [r0, r1, r2] = spin.reels;
+    await interaction.editReply({ embeds: [spinEmbed(`${r0.emoji} | ❓ | ❓`)] });
+    await sleep(800);
+    await interaction.editReply({ embeds: [spinEmbed(`${r0.emoji} | ${r1.emoji} | ❓`)] });
+    await sleep(800);
+
+    const line = spin.reels.map((r) => r.emoji).join(" | ");
+    let resultText;
+    let color = 0xe74c3c;
+
+    if (spin.isJackpot) {
+      const won = awardJackpot(interaction.user.id);
+      resultText = `💥🎉 **JACKPOT !!!** 🎉💥\nVous remportez **${formatEuro(won)}** !`;
+      color = 0xf1c40f;
+    } else if (spin.kind === "triple") {
+      addFunds(interaction.user.id, spin.won);
+      resultText = `✅ Trois **${r0.emoji}** ! Vous gagnez **${formatEuro(spin.won)}** (x${r0.multiplier}).`;
+      color = 0x2ecc71;
+    } else if (spin.kind === "paire") {
+      addFunds(interaction.user.id, spin.won);
+      resultText = `➖ Paire ! Mise remboursée (${formatEuro(amount)}).`;
+      color = 0x95a5a6;
+    } else {
+      resultText = `❌ Perdu. Mise : ${formatEuro(amount)}.`;
+    }
+
+    const resultEmbed = new EmbedBuilder()
+      .setColor(color)
+      .setTitle("🎰 Machine à sous")
+      .setDescription(`[ ${line} ]\n\n${resultText}`)
+      .addFields({ name: "💰 Votre solde", value: formatEuro(getBalance(interaction.user.id)), inline: true });
+    if (spin.isJackpot && IMAGES.slotJackpot) resultEmbed.setImage(IMAGES.slotJackpot);
+    else if (IMAGES.slotSpin) resultEmbed.setImage(IMAGES.slotSpin);
+
+    await updateCasinoMessage(client, loadState());
+    await interaction.editReply({ embeds: [resultEmbed] });
+    return;
+  }
+
+  // --- Plusieurs tours : récapitulatif, sans animation ---
+  await interaction.editReply({ content: "", embeds: [
+    new EmbedBuilder()
+      .setColor(0xe91e63)
+      .setTitle("🎰 Machine à sous")
+      .setDescription(`🎲 ${spins} tours à ${formatEuro(amount)}… ça tourne !`),
+  ] });
+  await sleep(1000);
+
+  let totalWon = 0;
+  let jackpotWon = 0;
+  const lines = [];
+
+  for (let i = 0; i < spins; i++) {
+    const spin = resolveSpin(amount);
+    const line = spin.reels.map((r) => r.emoji).join(" ");
+
+    if (spin.isJackpot) {
+      const won = awardJackpot(interaction.user.id);
+      jackpotWon += won;
+      totalWon = round2(totalWon + won);
+      lines.push(`${line} → 💥 **JACKPOT ${formatEuro(won)}**`);
+    } else if (spin.kind === "triple") {
+      addFunds(interaction.user.id, spin.won);
+      totalWon = round2(totalWon + spin.won);
+      lines.push(`${line} → ✅ **+${formatEuro(spin.won)}**`);
+    } else if (spin.kind === "paire") {
+      addFunds(interaction.user.id, spin.won);
+      totalWon = round2(totalWon + spin.won);
+      lines.push(`${line} → ➖ remboursé`);
+    } else {
+      lines.push(`${line} → ❌`);
+    }
+  }
+
+  const net = round2(totalWon - totalStake);
+  const color = jackpotWon > 0 ? 0xf1c40f : net > 0 ? 0x2ecc71 : net === 0 ? 0x95a5a6 : 0xe74c3c;
 
   const resultEmbed = new EmbedBuilder()
     .setColor(color)
-    .setTitle("🎰 Machine à sous")
-    .setDescription(`[ ${line} ]\n\n${resultText}`)
-    .addFields({ name: "💰 Votre solde", value: formatEuro(getBalance(interaction.user.id)), inline: true });
-  if (isJackpot && IMAGES.slotJackpot) resultEmbed.setImage(IMAGES.slotJackpot);
-  else if (IMAGES.slotSpin) resultEmbed.setImage(IMAGES.slotSpin);
+    .setTitle(`🎰 Machine à sous — ${spins} tours`)
+    .setDescription(lines.join("\n").slice(0, 4000))
+    .addFields(
+      { name: "Total misé", value: formatEuro(totalStake), inline: true },
+      { name: "Total gagné", value: formatEuro(totalWon), inline: true },
+      {
+        name: "Résultat net",
+        value: `${net >= 0 ? "🟢 +" : "🔴 "}${formatEuro(net)}`,
+        inline: true,
+      },
+      { name: "💰 Votre solde", value: formatEuro(getBalance(interaction.user.id)), inline: true }
+    );
+  if (jackpotWon > 0 && IMAGES.slotJackpot) resultEmbed.setImage(IMAGES.slotJackpot);
 
   await updateCasinoMessage(client, loadState());
   await interaction.editReply({ embeds: [resultEmbed] });
@@ -796,7 +893,23 @@ async function handleCasinoInteraction(interaction, client) {
     }
 
     if (interaction.customId === BTN.SLOTS) {
-      await interaction.showModal(buildAmountModal(MODAL_SLOTS, "🎰 Machine à sous"));
+      await interaction.reply({
+        content: "🎰 Combien de tours voulez-vous enchaîner ?",
+        components: [buildSlotSpinsRow()],
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    if (interaction.customId.startsWith(SLOT_SPINS_PREFIX)) {
+      const spins = interaction.customId.slice(SLOT_SPINS_PREFIX.length);
+      await interaction.showModal(
+        buildAmountModal(
+          `${MODAL_SLOTS_PREFIX}${spins}`,
+          spins === "1" ? "🎰 Machine à sous" : `🎰 Machine à sous — x${spins}`,
+          spins === "1" ? "Montant à miser (€)" : `Montant PAR TOUR (€) — ${spins} tours`
+        )
+      );
       return true;
     }
 
@@ -1224,14 +1337,15 @@ async function handleCasinoInteraction(interaction, client) {
       return true;
     }
 
-    if (interaction.customId === MODAL_SLOTS) {
+    if (interaction.customId.startsWith(MODAL_SLOTS_PREFIX)) {
+      const spins = parseInt(interaction.customId.slice(MODAL_SLOTS_PREFIX.length), 10) || 1;
       const amount = parseAmount(interaction.fields.getTextInputValue("montant"));
       if (!amount || amount <= 0 || Number.isNaN(amount)) {
         await interaction.reply({ content: "❌ Montant invalide.", ephemeral: true });
         return true;
       }
       await interaction.deferReply({ ephemeral: true });
-      await playSlots(interaction, client, amount);
+      await playSlots(interaction, client, amount, spins);
       return true;
     }
 
