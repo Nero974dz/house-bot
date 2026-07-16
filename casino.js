@@ -52,10 +52,91 @@ const BTN = {
 const ROULETTE_COLOR_PREFIX = "casino_roulette_color_";
 const MODAL_BLACKJACK = "casino_modal_blackjack";
 const MODAL_ROULETTE_PREFIX = "casino_modal_roulette_";
-const MODAL_DUEL_PREFIX = "casino_modal_duel_";
+const MODAL_DUEL_PREFIX = "casino_modal_duel_"; // + game:opponentId
 const SELECT_DUEL_OPPONENT = "casino_select_opponent";
+const DUEL_GAME_PREFIX = "casino_duelgame_"; // + game:opponentId
 const DUEL_ACCEPT_PREFIX = "casino_duel_accept_";
 const DUEL_DECLINE_PREFIX = "casino_duel_decline_";
+const RPS_PREFIX = "casino_rps_"; // + duelId:choix
+const C4_PREFIX = "casino_c4_"; // + duelId:colonne
+
+const GAME_NAMES = {
+  coinflip: "Pile ou face",
+  rps: "Pierre-Feuille-Ciseaux",
+  c4: "Puissance 4",
+};
+
+const RPS_EMOJI = { pierre: "🪨", feuille: "📄", ciseaux: "✂️" };
+function rpsBeats(a, b) {
+  return (
+    (a === "pierre" && b === "ciseaux") ||
+    (a === "ciseaux" && b === "feuille") ||
+    (a === "feuille" && b === "pierre")
+  );
+}
+
+const C4_ROWS = 5;
+const C4_COLS = 5;
+const C4_WIN = 4;
+const C4_NUMS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
+const C4_MARK = { 0: "⚪", 1: "🔴", 2: "🟡" };
+
+function c4NewBoard() {
+  return Array.from({ length: C4_ROWS }, () => Array(C4_COLS).fill(0));
+}
+function c4Drop(board, col, player) {
+  for (let r = C4_ROWS - 1; r >= 0; r--) {
+    if (board[r][col] === 0) {
+      board[r][col] = player;
+      return r;
+    }
+  }
+  return -1; // colonne pleine
+}
+function c4CheckWin(board, player) {
+  const dirs = [
+    [0, 1],
+    [1, 0],
+    [1, 1],
+    [1, -1],
+  ];
+  for (let r = 0; r < C4_ROWS; r++) {
+    for (let c = 0; c < C4_COLS; c++) {
+      if (board[r][c] !== player) continue;
+      for (const [dr, dc] of dirs) {
+        let k = 1;
+        while (k < C4_WIN) {
+          const nr = r + dr * k;
+          const nc = c + dc * k;
+          if (nr < 0 || nr >= C4_ROWS || nc < 0 || nc >= C4_COLS || board[nr][nc] !== player) break;
+          k++;
+        }
+        if (k === C4_WIN) return true;
+      }
+    }
+  }
+  return false;
+}
+function c4IsFull(board) {
+  return board.every((row) => row.every((c) => c !== 0));
+}
+function c4Render(board) {
+  const grid = board.map((row) => row.map((c) => C4_MARK[c]).join("")).join("\n");
+  return `${grid}\n${C4_NUMS.slice(0, C4_COLS).join("")}`;
+}
+function c4ButtonsRow(duelId, board) {
+  const row = new ActionRowBuilder();
+  for (let c = 0; c < C4_COLS; c++) {
+    row.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${C4_PREFIX}${duelId}:${c}`)
+        .setLabel(String(c + 1))
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(board[0][c] !== 0)
+    );
+  }
+  return row;
+}
 
 function isFondation(member) {
   return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
@@ -489,18 +570,89 @@ async function playRoulette(interaction, client, color, amount) {
 
 // --- Duel PvP ---
 
+function buildGameSelectRow(opponentId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${DUEL_GAME_PREFIX}coinflip:${opponentId}`)
+      .setLabel("Pile ou face")
+      .setEmoji("🪙")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${DUEL_GAME_PREFIX}rps:${opponentId}`)
+      .setLabel("Pierre-Feuille-Ciseaux")
+      .setEmoji("✊")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${DUEL_GAME_PREFIX}c4:${opponentId}`)
+      .setLabel("Puissance 4")
+      .setEmoji("🔴")
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+function buildRpsRow(duelId) {
+  return new ActionRowBuilder().addComponents(
+    ["pierre", "feuille", "ciseaux"].map((c) =>
+      new ButtonBuilder()
+        .setCustomId(`${RPS_PREFIX}${duelId}:${c}`)
+        .setLabel(c.charAt(0).toUpperCase() + c.slice(1))
+        .setEmoji(RPS_EMOJI[c])
+        .setStyle(ButtonStyle.Primary)
+    )
+  );
+}
+
 function buildDuelChallengeEmbed(duel) {
   const embed = new EmbedBuilder()
     .setColor(0xf39c12)
     .setTitle("⚔️ Défi lancé !")
     .setDescription(
       `<@${duel.challengerId}> défie <@${duel.opponentId}> pour **${formatEuro(duel.amount)}** chacun.\n\n` +
+        `🎮 Mini-jeu : **${GAME_NAMES[duel.game] || "Pile ou face"}**\n` +
         `Le gagnant remporte **${formatEuro(round2(duel.amount * 2 * (1 - DUEL_RAKE)))}** (taxe de la maison : ${(DUEL_RAKE * 100).toFixed(0)}%).`
     )
     .setFooter({ text: `Expire dans 5 minutes • Réf. ${duel.id}` })
     .setTimestamp();
   if (IMAGES.duel) embed.setThumbnail(IMAGES.duel);
   return embed;
+}
+
+/** Paie le gagnant (ou rembourse en cas d'égalité) et clôture le duel. */
+async function finishDuel(client, duel, winnerId) {
+  const state = loadState();
+  const idx = state.duels.findIndex((d) => d.id === duel.id);
+  let payout = 0;
+
+  if (winnerId) {
+    const pot = duel.amount * 2;
+    const rake = round2(pot * DUEL_RAKE);
+    payout = round2(pot - rake);
+    addFunds(winnerId, payout);
+    state.jackpot = round2(state.jackpot + rake);
+    duel.winnerId = winnerId;
+  } else {
+    // égalité / annulation : on rembourse les deux
+    addFunds(duel.challengerId, duel.amount);
+    addFunds(duel.opponentId, duel.amount);
+    duel.winnerId = null;
+  }
+
+  duel.status = "resolved";
+  duel.resolvedAt = Date.now();
+  if (idx !== -1) state.duels[idx] = duel;
+  else state.duels.push(duel);
+  saveState(state);
+  await updateCasinoMessage(client, loadState());
+
+  return payout;
+}
+
+function saveDuel(duel) {
+  const state = loadState();
+  const idx = state.duels.findIndex((d) => d.id === duel.id);
+  if (idx !== -1) state.duels[idx] = duel;
+  else state.duels.push(duel);
+  saveState(state);
 }
 
 function buildDuelRow(duelId, disabled = false) {
@@ -660,40 +812,89 @@ async function handleCasinoInteraction(interaction, client) {
         return true;
       }
 
+      // Les mises sont bloquées dès l'acceptation
       removeFunds(duel.challengerId, duel.amount);
       removeFunds(duel.opponentId, duel.amount);
+      duel.status = "playing";
 
-      const pot = duel.amount * 2;
-      const rake = round2(pot * DUEL_RAKE);
-      const payout = round2(pot - rake);
+      const game = duel.game || "coinflip";
 
-      const winnerId = Math.random() < 0.5 ? duel.challengerId : duel.opponentId;
-      const loserId = winnerId === duel.challengerId ? duel.opponentId : duel.challengerId;
+      // Filet de sécurité : rembourse si la partie est abandonnée (RPS / Puissance 4)
+      if (game !== "coinflip") {
+        setTimeout(() => {
+          const s = loadState();
+          const d = s.duels.find((x) => x.id === duel.id);
+          if (d && d.status === "playing") {
+            addFunds(d.challengerId, d.amount);
+            addFunds(d.opponentId, d.amount);
+            d.status = "abandoned";
+            saveState(s);
+          }
+        }, DUEL_TIMEOUT_MS);
+      }
 
-      addFunds(winnerId, payout);
+      if (game === "coinflip") {
+        const winnerId = Math.random() < 0.5 ? duel.challengerId : duel.opponentId;
+        const loserId = winnerId === duel.challengerId ? duel.opponentId : duel.challengerId;
+        const payout = await finishDuel(client, duel, winnerId);
 
-      const casinoState = loadState();
-      casinoState.jackpot = round2(casinoState.jackpot + rake);
-      duel.status = "resolved";
-      duel.winnerId = winnerId;
-      duel.resolvedAt = Date.now();
-      const idx = casinoState.duels.findIndex((d) => d.id === duelId);
-      if (idx !== -1) casinoState.duels[idx] = duel;
-      saveState(casinoState);
-      await updateCasinoMessage(client, casinoState);
-
-      const resultEmbed = new EmbedBuilder()
-        .setColor(0x2ecc71)
-        .setTitle("⚔️ Résultat du défi")
-        .setDescription(
-          `🪙 Pile ou face...\n\n` +
+        const resultEmbed = new EmbedBuilder()
+          .setColor(0x2ecc71)
+          .setTitle("🪙 Pile ou face — Résultat")
+          .setDescription(
             `🏆 <@${winnerId}> remporte **${formatEuro(payout)}** !\n` +
-            `😔 <@${loserId}> repart bredouille.`
-        )
-        .setTimestamp();
-      if (IMAGES.duel) resultEmbed.setThumbnail(IMAGES.duel);
+              `😔 <@${loserId}> repart bredouille.`
+          )
+          .setTimestamp();
+        if (IMAGES.duel) resultEmbed.setThumbnail(IMAGES.duel);
 
-      await interaction.update({ embeds: [resultEmbed], content: "", components: [] });
+        await interaction.update({ embeds: [resultEmbed], content: "", components: [] });
+        return true;
+      }
+
+      if (game === "rps") {
+        duel.rpsChoices = {};
+        saveDuel(duel);
+
+        const embed = new EmbedBuilder()
+          .setColor(0x9b59b6)
+          .setTitle("✊ Pierre-Feuille-Ciseaux")
+          .setDescription(
+            `<@${duel.challengerId}> 🆚 <@${duel.opponentId}> — **${formatEuro(duel.amount)}**\n\n` +
+              "Chaque joueur choisit **en secret** ci-dessous. Le résultat s'affiche quand les deux ont choisi."
+          )
+          .setTimestamp();
+
+        await interaction.update({
+          content: `<@${duel.challengerId}> <@${duel.opponentId}>`,
+          embeds: [embed],
+          components: [buildRpsRow(duel.id)],
+        });
+        return true;
+      }
+
+      if (game === "c4") {
+        duel.board = c4NewBoard();
+        duel.turn = duel.challengerId; // le défieur (🔴) commence
+        saveDuel(duel);
+
+        const embed = new EmbedBuilder()
+          .setColor(0x3498db)
+          .setTitle("🔴🟡 Puissance 4")
+          .setDescription(
+            `🔴 <@${duel.challengerId}>  🆚  🟡 <@${duel.opponentId}> — **${formatEuro(duel.amount)}**\n\n` +
+              `${c4Render(duel.board)}\n\nAu tour de 🔴 <@${duel.turn}>`
+          )
+          .setTimestamp();
+
+        await interaction.update({
+          content: `<@${duel.turn}>`,
+          embeds: [embed],
+          components: [c4ButtonsRow(duel.id, duel.board)],
+        });
+        return true;
+      }
+
       return true;
     }
 
@@ -724,6 +925,160 @@ async function handleCasinoInteraction(interaction, client) {
       });
       return true;
     }
+
+    // Choix du mini-jeu (après sélection de l'adversaire)
+    if (interaction.customId.startsWith(DUEL_GAME_PREFIX)) {
+      const [game, opponentId] = interaction.customId.slice(DUEL_GAME_PREFIX.length).split(":");
+      await interaction.showModal(
+        buildAmountModal(`${MODAL_DUEL_PREFIX}${game}:${opponentId}`, `⚔️ Mise — ${GAME_NAMES[game] || "Défi"}`)
+      );
+      return true;
+    }
+
+    // Coup de Pierre-Feuille-Ciseaux
+    if (interaction.customId.startsWith(RPS_PREFIX)) {
+      const [duelId, choice] = interaction.customId.slice(RPS_PREFIX.length).split(":");
+      const state = loadState();
+      const duel = state.duels.find((d) => d.id === duelId);
+
+      if (!duel || duel.status !== "playing" || duel.game !== "rps") {
+        await interaction.reply({ content: "❌ Ce défi n'est plus actif.", ephemeral: true });
+        return true;
+      }
+      if (interaction.user.id !== duel.challengerId && interaction.user.id !== duel.opponentId) {
+        await interaction.reply({ content: "❌ Vous ne participez pas à ce défi.", ephemeral: true });
+        return true;
+      }
+      duel.rpsChoices = duel.rpsChoices || {};
+      if (duel.rpsChoices[interaction.user.id]) {
+        await interaction.reply({ content: "❌ Vous avez déjà choisi.", ephemeral: true });
+        return true;
+      }
+
+      duel.rpsChoices[interaction.user.id] = choice;
+      saveDuel(duel);
+
+      await interaction.reply({
+        content: `✅ Vous avez choisi ${RPS_EMOJI[choice]} **${choice}**.`,
+        ephemeral: true,
+      });
+
+      const a = duel.rpsChoices[duel.challengerId];
+      const b = duel.rpsChoices[duel.opponentId];
+      if (!a || !b) return true; // on attend l'autre joueur
+
+      if (a === b) {
+        // égalité : on rejoue
+        duel.rpsChoices = {};
+        saveDuel(duel);
+        const tie = new EmbedBuilder()
+          .setColor(0xf1c40f)
+          .setTitle("✊ Pierre-Feuille-Ciseaux — Égalité")
+          .setDescription(
+            `Les deux ont choisi ${RPS_EMOJI[a]} **${a}**. Rejouez !\n\n<@${duel.challengerId}> 🆚 <@${duel.opponentId}>`
+          )
+          .setTimestamp();
+        await interaction.message.edit({ embeds: [tie], components: [buildRpsRow(duel.id)] }).catch(() => null);
+        return true;
+      }
+
+      const challengerWins = rpsBeats(a, b);
+      const winnerId = challengerWins ? duel.challengerId : duel.opponentId;
+      const loserId = challengerWins ? duel.opponentId : duel.challengerId;
+      const payout = await finishDuel(client, duel, winnerId);
+
+      const resultEmbed = new EmbedBuilder()
+        .setColor(0x2ecc71)
+        .setTitle("✊ Pierre-Feuille-Ciseaux — Résultat")
+        .setDescription(
+          `<@${duel.challengerId}> : ${RPS_EMOJI[a]} **${a}**\n` +
+            `<@${duel.opponentId}> : ${RPS_EMOJI[b]} **${b}**\n\n` +
+            `🏆 <@${winnerId}> remporte **${formatEuro(payout)}** !\n` +
+            `😔 <@${loserId}> repart bredouille.`
+        )
+        .setTimestamp();
+      await interaction.message.edit({ content: "", embeds: [resultEmbed], components: [] }).catch(() => null);
+      return true;
+    }
+
+    // Coup de Puissance 4
+    if (interaction.customId.startsWith(C4_PREFIX)) {
+      const [duelId, colStr] = interaction.customId.slice(C4_PREFIX.length).split(":");
+      const col = parseInt(colStr, 10);
+      const state = loadState();
+      const duel = state.duels.find((d) => d.id === duelId);
+
+      if (!duel || duel.status !== "playing" || duel.game !== "c4") {
+        await interaction.reply({ content: "❌ Ce défi n'est plus actif.", ephemeral: true });
+        return true;
+      }
+      if (interaction.user.id !== duel.challengerId && interaction.user.id !== duel.opponentId) {
+        await interaction.reply({ content: "❌ Vous ne participez pas à ce défi.", ephemeral: true });
+        return true;
+      }
+      if (interaction.user.id !== duel.turn) {
+        await interaction.reply({ content: "⏳ Ce n'est pas votre tour.", ephemeral: true });
+        return true;
+      }
+
+      const player = interaction.user.id === duel.challengerId ? 1 : 2;
+      const droppedRow = c4Drop(duel.board, col, player);
+      if (droppedRow === -1) {
+        await interaction.reply({ content: "❌ Colonne pleine, choisissez-en une autre.", ephemeral: true });
+        return true;
+      }
+
+      // Victoire ?
+      if (c4CheckWin(duel.board, player)) {
+        const winnerId = interaction.user.id;
+        const loserId = winnerId === duel.challengerId ? duel.opponentId : duel.challengerId;
+        const payout = await finishDuel(client, duel, winnerId);
+
+        const embed = new EmbedBuilder()
+          .setColor(0x2ecc71)
+          .setTitle("🔴🟡 Puissance 4 — Victoire")
+          .setDescription(
+            `${c4Render(duel.board)}\n\n` +
+              `🏆 <@${winnerId}> aligne 4 et remporte **${formatEuro(payout)}** !\n` +
+              `😔 <@${loserId}> repart bredouille.`
+          )
+          .setTimestamp();
+        await interaction.update({ content: "", embeds: [embed], components: [] });
+        return true;
+      }
+
+      // Match nul ?
+      if (c4IsFull(duel.board)) {
+        await finishDuel(client, duel, null);
+        const embed = new EmbedBuilder()
+          .setColor(0xf1c40f)
+          .setTitle("🔴🟡 Puissance 4 — Match nul")
+          .setDescription(`${c4Render(duel.board)}\n\n🤝 Grille pleine — mises remboursées.`)
+          .setTimestamp();
+        await interaction.update({ content: "", embeds: [embed], components: [] });
+        return true;
+      }
+
+      // On passe au tour suivant
+      duel.turn = interaction.user.id === duel.challengerId ? duel.opponentId : duel.challengerId;
+      saveDuel(duel);
+
+      const turnMark = duel.turn === duel.challengerId ? "🔴" : "🟡";
+      const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle("🔴🟡 Puissance 4")
+        .setDescription(
+          `🔴 <@${duel.challengerId}>  🆚  🟡 <@${duel.opponentId}> — **${formatEuro(duel.amount)}**\n\n` +
+            `${c4Render(duel.board)}\n\nAu tour de ${turnMark} <@${duel.turn}>`
+        )
+        .setTimestamp();
+      await interaction.update({
+        content: `<@${duel.turn}>`,
+        embeds: [embed],
+        components: [c4ButtonsRow(duel.id, duel.board)],
+      });
+      return true;
+    }
   }
 
   if (interaction.isUserSelectMenu() && interaction.customId === SELECT_DUEL_OPPONENT) {
@@ -746,7 +1101,10 @@ async function handleCasinoInteraction(interaction, client) {
       return true;
     }
 
-    await interaction.showModal(buildAmountModal(`${MODAL_DUEL_PREFIX}${opponentId}`, "⚔️ Montant du défi"));
+    await interaction.update({
+      content: `⚔️ Défi contre <@${opponentId}> — choisissez le **mini-jeu** :`,
+      components: [buildGameSelectRow(opponentId)],
+    });
     return true;
   }
 
@@ -775,7 +1133,7 @@ async function handleCasinoInteraction(interaction, client) {
     }
 
     if (interaction.customId.startsWith(MODAL_DUEL_PREFIX)) {
-      const opponentId = interaction.customId.slice(MODAL_DUEL_PREFIX.length);
+      const [game, opponentId] = interaction.customId.slice(MODAL_DUEL_PREFIX.length).split(":");
       const amount = parseAmount(interaction.fields.getTextInputValue("montant"));
 
       if (!amount || amount <= 0 || Number.isNaN(amount)) {
@@ -793,6 +1151,7 @@ async function handleCasinoInteraction(interaction, client) {
         challengerId: interaction.user.id,
         opponentId,
         amount,
+        game: game || "coinflip",
         status: "pending",
         createdAt: Date.now(),
       };
