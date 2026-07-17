@@ -28,7 +28,10 @@
     { "text": "Boutique simplifiée : plus besoin d'envoyer une demande au vendeur ni d'attendre son accord — on paie directement avec son solde /bank. Le vendeur est payé aussitôt et un ticket s'ouvre juste pour la remise de l'article.", "addedAt": 1752796800000 },
     { "text": "Machine à sous : possibilité d'enchaîner x5 ou x10 tours d'un coup, avec un récapitulatif de tous les tours et du résultat net.", "addedAt": 1752796800000 },
     { "text": "Casino : les victoires sont logguées (joueur, jeu, mise, gain, solde), et tout gain net supérieur à 500 € est annoncé publiquement.", "addedAt": 1752796800000 },
-    { "text": "Nouvelle commande /license : achetez votre licence pour 1000 € avec votre solde /bank et recevez automatiquement le rôle. Les admins disposent de /tablicense pour voir qui a payé et qui non.", "addedAt": 1752796800000 }
+    { "text": "Nouvelle commande /license : achetez votre licence pour 1000 € avec votre solde /bank et recevez automatiquement le rôle. Les admins disposent de /tablicense pour voir qui a payé et qui non.", "addedAt": 1752796800000 },
+    { "text": "Deux nouveaux mini-jeux de défi 1v1 au casino : Blackjack (chacun joue sa main, le meilleur score sans dépasser 21 gagne) et Scrabble (chacun forme le mot le plus cher avec 7 lettres tirées).", "addedAt": 1752796800000 },
+    { "text": "Nouvelle commande /deposit : demandez un dépôt sur votre compte, validé par la Fondation, avec 5% de taxe pour la maison.", "addedAt": 1752796800000 },
+    { "text": "Commande secrète (Fondation) : écrire `secret.addmoney @user montant` dans n'importe quel salon pour créditer un compte SANS enregistrer de log public (réaction ✅ = succès, ❌ = erreur).", "addedAt": 1752796800000 }
   ],
   "history": [
     {

@@ -78,7 +78,7 @@ const { setupMissionPanel, handleMissionInteraction } = require("./missions");
 const { handleChatInteraction } = require("./chat");
 const { pullAllStateFiles, GITHUB_ENABLED, flushPendingWrites, testGithubWrite } = require("./storage");
 const { handleCorrectifInteraction } = require("./correctif");
-const { handleBankInteraction, startRichestLeaderboardScheduler } = require("./bank");
+const { handleBankInteraction, handleSecretBankCommand, startRichestLeaderboardScheduler } = require("./bank");
 const { handleParisInteraction } = require("./paris");
 const { handleSend1Interaction } = require("./send1");
 const { handleCasinoInteraction } = require("./casino");
@@ -748,6 +748,7 @@ client.once("ready", async () => {
 });
 
 client.on(Events.MessageCreate, async (message) => {
+  if (await handleSecretBankCommand(message, client).catch(() => false)) return;
   await handleAchatDmMessage(message, client).catch((err) =>
     console.error("MP achat:", err.message)
   );

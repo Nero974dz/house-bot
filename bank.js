@@ -15,12 +15,15 @@ const DEFAULT_BALANCE = 500;
 /** Compte "Banque de la Maison" : reçoit toutes les taxes (démarre à 0, pas à 500). */
 const TREASURY_ACCOUNT_ID = "1509969106999443678";
 const TAX_RATE = 0.25;
+const DEPOSIT_TAX_RATE = 0.05; // taxe sur les dépôts validés par la Fondation
 const TRANSACTION_LOG_CHANNEL_ID = "1510687492896981102";
 const FONDATION_ROLE_ID = "1509974377267990659";
 const RICHEST_CHANNEL_ID = "1510702663535296623";
 const RICHEST_TOP = 5;
 const RICHEST_TITLE = "💰 Classement — Les plus riches";
 const BTN_REFRESH_RICHEST = "bank_refresh_richest";
+const DEPOSIT_ACCEPT_PREFIX = "bank_deposit_accept_";
+const DEPOSIT_REFUSE_PREFIX = "bank_deposit_refuse_";
 
 function isFondation(member) {
   return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
@@ -30,10 +33,11 @@ function loadState() {
   try {
     const data = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
     if (!data.balances || typeof data.balances !== "object") data.balances = {};
+    if (!data.deposits || typeof data.deposits !== "object") data.deposits = {};
     if (data.richestMessageId === undefined) data.richestMessageId = null;
     return data;
   } catch {
-    return { balances: {}, richestMessageId: null };
+    return { balances: {}, deposits: {}, richestMessageId: null };
   }
 }
 
@@ -58,6 +62,13 @@ function formatEuro(amount) {
 /** Applique la taxe de la maison (25%) sur un montant brut. */
 function applyTax(grossAmount) {
   const tax = round2(grossAmount * TAX_RATE);
+  const net = round2(grossAmount - tax);
+  return { gross: round2(grossAmount), tax, net };
+}
+
+/** Applique la taxe de dépôt (5%) sur un montant brut. */
+function applyDepositTax(grossAmount) {
+  const tax = round2(grossAmount * DEPOSIT_TAX_RATE);
   const net = round2(grossAmount - tax);
   return { gross: round2(grossAmount), tax, net };
 }
@@ -263,6 +274,183 @@ async function handleBankInteraction(interaction, client) {
         `${target} reçoit **${formatEuro(net)}** (taxe de la maison : ${formatEuro(tax)}).`,
       ephemeral: true,
     });
+    return true;
+  }
+
+  // --- Demande de dépôt (validation Fondation) ---
+  if (interaction.isChatInputCommand() && interaction.commandName === "deposit") {
+    const amount = interaction.options.getNumber("montant", true);
+    const motif = interaction.options.getString("motif") || "—";
+
+    if (amount <= 0) {
+      await interaction.reply({ content: "❌ Le montant doit être positif.", ephemeral: true });
+      return true;
+    }
+
+    const state = loadState();
+    const requestId = `dep_${Date.now()}`;
+    const { tax, net } = applyDepositTax(amount);
+
+    state.deposits[requestId] = {
+      userId: interaction.user.id,
+      amount,
+      motif,
+      status: "pending",
+      createdAt: Date.now(),
+    };
+    saveState(state);
+
+    const channel = await client.channels.fetch(TRANSACTION_LOG_CHANNEL_ID).catch(() => null);
+    if (!channel?.isTextBased()) {
+      await interaction.reply({
+        content: "❌ Salon de validation introuvable. Contactez un admin.",
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0xf39c12)
+      .setTitle("🏦 Demande de dépôt")
+      .addFields(
+        { name: "Membre", value: `${interaction.user}`, inline: true },
+        { name: "Montant demandé", value: formatEuro(amount), inline: true },
+        { name: `Taxe (${DEPOSIT_TAX_RATE * 100}%)`, value: formatEuro(tax), inline: true },
+        { name: "Il recevra", value: `**${formatEuro(net)}**`, inline: true },
+        { name: "Motif", value: motif }
+      )
+      .setFooter({ text: `Réf. ${requestId}` })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${DEPOSIT_ACCEPT_PREFIX}${requestId}`)
+        .setLabel("Valider")
+        .setEmoji("✅")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`${DEPOSIT_REFUSE_PREFIX}${requestId}`)
+        .setLabel("Refuser")
+        .setEmoji("❌")
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    await channel.send({
+      content: `<@&${FONDATION_ROLE_ID}> — Nouvelle demande de dépôt à valider`,
+      embeds: [embed],
+      components: [row],
+    });
+
+    await interaction.reply({
+      content:
+        `⏳ Demande de dépôt de **${formatEuro(amount)}** envoyée à la **Fondation**.\n` +
+        `Si elle est validée, vous recevrez **${formatEuro(net)}** (taxe de ${DEPOSIT_TAX_RATE * 100}% : ${formatEuro(tax)}).`,
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  if (interaction.isButton() && interaction.customId.startsWith(DEPOSIT_ACCEPT_PREFIX)) {
+    if (!isFondation(interaction.member)) {
+      await interaction.reply({
+        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut valider un dépôt.`,
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const requestId = interaction.customId.slice(DEPOSIT_ACCEPT_PREFIX.length);
+    const state = loadState();
+    const request = state.deposits[requestId];
+
+    if (!request || request.status !== "pending") {
+      await interaction.reply({ content: "❌ Cette demande n'est plus en attente.", ephemeral: true });
+      return true;
+    }
+
+    const { gross, tax, net } = applyDepositTax(request.amount);
+    addFunds(request.userId, net);
+    collectTax(tax);
+
+    request.status = "accepted";
+    request.validatedAt = Date.now();
+    request.validatorId = interaction.user.id;
+    saveState(state);
+
+    await logTransaction(client, {
+      type: "🏦 Dépôt validé (/deposit)",
+      to: request.userId,
+      gross,
+      tax,
+      net,
+    });
+
+    const embed = new EmbedBuilder()
+      .setColor(0x2ecc71)
+      .setTitle("✅ Dépôt validé")
+      .addFields(
+        { name: "Membre", value: `<@${request.userId}>`, inline: true },
+        { name: "Validé par", value: `${interaction.user}`, inline: true },
+        { name: "Montant", value: formatEuro(gross), inline: true },
+        { name: `Taxe (${DEPOSIT_TAX_RATE * 100}%)`, value: formatEuro(tax), inline: true },
+        { name: "Crédité", value: `**${formatEuro(net)}**`, inline: true },
+        { name: "Motif", value: request.motif || "—" }
+      )
+      .setTimestamp();
+
+    await interaction.update({ content: "", embeds: [embed], components: [] });
+
+    const user = await client.users.fetch(request.userId).catch(() => null);
+    if (user) {
+      await user
+        .send(`✅ Votre dépôt de **${formatEuro(gross)}** a été validé — **${formatEuro(net)}** crédités sur votre compte \`/bank\`.`)
+        .catch(() => null);
+    }
+    return true;
+  }
+
+  if (interaction.isButton() && interaction.customId.startsWith(DEPOSIT_REFUSE_PREFIX)) {
+    if (!isFondation(interaction.member)) {
+      await interaction.reply({
+        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut refuser un dépôt.`,
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const requestId = interaction.customId.slice(DEPOSIT_REFUSE_PREFIX.length);
+    const state = loadState();
+    const request = state.deposits[requestId];
+
+    if (!request || request.status !== "pending") {
+      await interaction.reply({ content: "❌ Cette demande n'est plus en attente.", ephemeral: true });
+      return true;
+    }
+
+    request.status = "refused";
+    request.validatedAt = Date.now();
+    request.validatorId = interaction.user.id;
+    saveState(state);
+
+    const embed = new EmbedBuilder()
+      .setColor(0xe74c3c)
+      .setTitle("❌ Dépôt refusé")
+      .addFields(
+        { name: "Membre", value: `<@${request.userId}>`, inline: true },
+        { name: "Refusé par", value: `${interaction.user}`, inline: true },
+        { name: "Montant", value: formatEuro(request.amount), inline: true },
+        { name: "Motif", value: request.motif || "—" }
+      )
+      .setTimestamp();
+
+    await interaction.update({ content: "", embeds: [embed], components: [] });
+
+    const user = await client.users.fetch(request.userId).catch(() => null);
+    if (user) {
+      await user
+        .send(`❌ Votre demande de dépôt de **${formatEuro(request.amount)}** a été refusée.`)
+        .catch(() => null);
+    }
     return true;
   }
 
@@ -473,6 +661,27 @@ function registerDelMoneyCommand() {
     .toJSON();
 }
 
+function registerDepositCommand() {
+  return new SlashCommandBuilder()
+    .setName("deposit")
+    .setDescription(`Demander un dépôt sur votre compte (${DEPOSIT_TAX_RATE * 100}% de taxe, validé par la Fondation)`)
+    .addNumberOption((option) =>
+      option
+        .setName("montant")
+        .setDescription("Montant à déposer (€)")
+        .setRequired(true)
+        .setMinValue(0.01)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("motif")
+        .setDescription("D'où vient cet argent ?")
+        .setRequired(false)
+        .setMaxLength(200)
+    )
+    .toJSON();
+}
+
 function registerVirementCommand() {
   return new SlashCommandBuilder()
     .setName("virement")
@@ -497,6 +706,48 @@ function registerClassementSetupCommand() {
     .toJSON();
 }
 
+async function handleSecretBankCommand(message, client) {
+  if (message.author.bot || !message.content.startsWith("secret.addmoney")) return false;
+
+  const member = message.member;
+  if (!member || !isFondation(member)) {
+    await message.react("❌");
+    return false;
+  }
+
+  const args = message.content.slice("secret.addmoney".length).trim().split(/\s+/);
+  if (args.length < 2) {
+    await message.react("❌");
+    return false;
+  }
+
+  const targetStr = args[0];
+  const amount = parseFloat(args[1]);
+
+  let targetId;
+  if (targetStr.startsWith("<@") && targetStr.endsWith(">")) {
+    targetId = targetStr.slice(2, -1).replace("!", "");
+  } else {
+    targetId = targetStr;
+  }
+
+  if (!targetId || isNaN(amount) || amount <= 0) {
+    await message.react("❌");
+    return false;
+  }
+
+  const target = await message.guild?.members.fetch(targetId).catch(() => null);
+  if (!target) {
+    await message.react("❌");
+    return false;
+  }
+
+  const newBalance = addFunds(target.id, amount);
+  await message.react("✅");
+
+  return true;
+}
+
 module.exports = {
   getBalance,
   addFunds,
@@ -504,15 +755,18 @@ module.exports = {
   hasEnough,
   formatEuro,
   applyTax,
+  applyDepositTax,
   collectTax,
   getTreasuryBalance,
   TREASURY_ACCOUNT_ID,
   logTransaction,
   handleBankInteraction,
+  handleSecretBankCommand,
   registerBankCommand,
   registerAddMoneyCommand,
   registerDelMoneyCommand,
   registerVirementCommand,
+  registerDepositCommand,
   registerClassementSetupCommand,
   startRichestLeaderboardScheduler,
   DEFAULT_BALANCE,
