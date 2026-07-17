@@ -85,9 +85,12 @@ async function pushStateFile(filename, attempt = 0) {
   if (!GITHUB_ENABLED) return;
   const filePath = getStatePath(filename);
   if (!fs.existsSync(filePath)) return;
+
+  // Toujours lire le contenu local le plus récent juste avant d'envoyer
   const content = fs.readFileSync(filePath, "utf8");
   const contentB64 = Buffer.from(content, "utf8").toString("base64");
 
+  // Récupérer le SHA actuel sur GitHub (obligatoire pour PUT)
   let sha;
   const existing = await fetch(`${githubUrl(filename)}?ref=${DATA_BRANCH}`, {
     headers: githubHeaders(),
@@ -107,8 +110,10 @@ async function pushStateFile(filename, attempt = 0) {
     }),
   });
 
-  // 409 = SHA périmé (deux écritures concurrentes du même fichier) : on refait avec un SHA frais
-  if (res.status === 409 && attempt < 5) {
+  // 409 = SHA périmé : backoff exponentiel puis on réessaie avec un SHA frais
+  if (res.status === 409 && attempt < 10) {
+    const delay = Math.min(200 * Math.pow(2, attempt), 5000);
+    await new Promise((r) => setTimeout(r, delay));
     return pushStateFile(filename, attempt + 1);
   }
 
@@ -238,28 +243,36 @@ async function testGithubWrite() {
 }
 
 const pendingWrites = new Set();
-// Chaîne de promesses par fichier : les sauvegardes d'un même fichier sont
-// sérialisées (jamais deux GET/PUT en parallèle sur le même) → évite les 409.
 const pushLocks = new Map();
+// Debounce : si plusieurs writes arrivent en rafale sur le même fichier,
+// on n'envoie qu'une seule fois à GitHub après un délai de calme (500ms).
+const debounceTimers = new Map();
+const DEBOUNCE_MS = 500;
 
-/**
- * À appeler juste après fs.writeFileSync dans chaque saveState(). Fire-and-forget,
- * mais l'envoi est suivi dans `pendingWrites` pour pouvoir être attendu avant
- * l'arrêt du processus (voir flushPendingWrites) — sinon un redémarrage juste
- * après une écriture peut perdre le changement si l'envoi GitHub n'est pas terminé.
- */
+function scheduleDebounced(filename) {
+  if (debounceTimers.has(filename)) {
+    clearTimeout(debounceTimers.get(filename));
+  }
+  const t = setTimeout(() => {
+    debounceTimers.delete(filename);
+    // Sérialiser via le lock
+    const prev = pushLocks.get(filename) || Promise.resolve();
+    const next = prev
+      .catch(() => {})
+      .then(() => pushStateFile(filename))
+      .catch((err) => console.warn(`Sync GitHub (push ${filename}):`, err.message));
+    pushLocks.set(filename, next);
+    pendingWrites.add(next);
+    next.finally(() => {
+      pendingWrites.delete(next);
+      if (pushLocks.get(filename) === next) pushLocks.delete(filename);
+    });
+  }, DEBOUNCE_MS);
+  debounceTimers.set(filename, t);
+}
+
 function persistState(filename) {
-  const prev = pushLocks.get(filename) || Promise.resolve();
-  const next = prev
-    .catch(() => {})
-    .then(() => pushStateFile(filename))
-    .catch((err) => console.warn(`Sync GitHub (push ${filename}):`, err.message));
-  pushLocks.set(filename, next);
-  pendingWrites.add(next);
-  next.finally(() => {
-    pendingWrites.delete(next);
-    if (pushLocks.get(filename) === next) pushLocks.delete(filename);
-  });
+  scheduleDebounced(filename);
 }
 
 /** Attend que tous les envois GitHub en cours se terminent (avec un délai maximum). */

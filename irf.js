@@ -493,7 +493,7 @@ async function handleIrfInteraction(interaction, client) {
           .setTitle("💸 Amende infligée")
           .addFields(
             { name: "Membre", value: `<@${targetId}>`, inline: true },
-            { name: "Montant", value: formatEuro(deducted), inline: true },
+            { name: "Montant", value: formatEuro(amount), inline: true },
             { name: "Motif", value: motif },
             { name: "Par", value: `<@${interaction.user.id}> (IRF)`, inline: true },
           )
@@ -503,7 +503,7 @@ async function handleIrfInteraction(interaction, client) {
     }
 
     await interaction.reply({
-      content: `✅ Amende de **${formatEuro(deducted)}** infligée à <@${targetId}>.\nMotif : *${motif}*`,
+      content: `✅ Amende de **${formatEuro(amount)}** infligée à <@${targetId}>.\nMotif : *${motif}*`,
       ephemeral: true,
     });
     return true;
