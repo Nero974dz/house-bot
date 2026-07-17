@@ -1,4 +1,12 @@
 {
   "messageId": "1527537392930787419",
-  "transactions": []
+  "transactions": [
+    {
+      "byId": "casino",
+      "at": 1784263720326,
+      "userId": "1363979726418608148",
+      "type": "🎡 Roulette (rouge, mise: 100,00 €)",
+      "amount": -100
+    }
+  ]
 }
