@@ -713,6 +713,7 @@ client.once("ready", async () => {
       "paris-state.json",
       "casino-state.json",
       "license-state.json",
+      "irf-state.json",
     ]);
     console.log("Synchronisation terminée.");
   } else {
