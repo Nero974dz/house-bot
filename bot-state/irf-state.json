@@ -2,6 +2,15 @@
   "messageId": "1527540905911914617",
   "transactions": [
     {
+      "byId": "casino",
+      "at": 1784319662788,
+      "userId": "1411724649036910673",
+      "type": "🏆 Victoire Casino",
+      "game": "Blackjack",
+      "stake": 100,
+      "amount": 100
+    },
+    {
       "byId": "1390508824846139453",
       "at": 1784319636960,
       "type": "⚖️ Saisie",
