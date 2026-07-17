@@ -1,5 +1,16 @@
 {
   "messageId": "1527545987198091365",
-  "logements": {},
+  "logements": {
+    "log_1784265793743": {
+      "id": "log_1784265793743",
+      "nom": "Villa test",
+      "adresse": "test",
+      "prixNuit": 45,
+      "caution": 20,
+      "statut": "libre",
+      "locataireId": null,
+      "reservationId": null
+    }
+  },
   "reservations": {}
 }
