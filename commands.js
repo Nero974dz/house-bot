@@ -57,6 +57,7 @@ async function registerSlashCommands(client, token) {
         .setDescription("Ajouter un correctif manuellement")
         .addStringOption(o => o.setName("texte").setDescription("Texte du correctif (ex: [Casino] Nouvelle fonctionnalité...)").setRequired(true).setMaxLength(500))
       )
+      .addSubcommand(sub => sub.setName("modifier").setDescription("Modifier le dernier message de correctif publié"))
       .toJSON(),
     registerBankCommand(),
     registerAddMoneyCommand(),

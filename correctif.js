@@ -1,9 +1,9 @@
 const fs = require("fs");
-const { EmbedBuilder } = require("discord.js");
+const { EmbedBuilder, ModalBuilder, ActionRowBuilder, TextInputBuilder, TextInputStyle } = require("discord.js");
 const { getStatePath, persistState } = require("./storage");
 
 const FONDATION_ROLE_ID = "1509974377267990659";
-const CORRECTIF_CHANNEL_ID = "1527025330852991097";
+const CORRECTIF_CHANNEL_ID = "1509983723892903966";
 
 const STATE_FILE = getStatePath("correctif-state.json");
 
@@ -69,6 +69,28 @@ function buildCorrectifEmbed(entries, author) {
 }
 
 async function handleCorrectifInteraction(interaction) {
+  // Modal modification
+  if (interaction.isModalSubmit() && interaction.customId === "correctif_modal_edit") {
+    const contenu = interaction.fields.getTextInputValue("contenu").trim();
+    const state = loadState();
+    const channel = await interaction.guild.channels.fetch(CORRECTIF_CHANNEL_ID).catch(() => null);
+    const msg = await channel?.messages.fetch(state.lastMessageId).catch(() => null);
+    if (!msg) { await interaction.reply({ content: "❌ Message introuvable.", ephemeral: true }); return true; }
+
+    const version = `v${new Date().toLocaleDateString("fr-FR").replace(/\//g, ".")}`;
+    const newEmbed = new EmbedBuilder()
+      .setColor(0x1abc9c)
+      .setTitle(`📦 Mise à jour ${version}`)
+      .setDescription("Voici les nouveautés et améliorations apportées à la Maison.\n​")
+      .setDescription(contenu.slice(0, 4000))
+      .setFooter({ text: `Modifié par ${interaction.user.username}` })
+      .setTimestamp();
+
+    await msg.edit({ embeds: [newEmbed] });
+    await interaction.reply({ content: "✅ Correctif modifié.", ephemeral: true });
+    return true;
+  }
+
   if (!interaction.isChatInputCommand() || interaction.commandName !== "correctif") return false;
 
   if (!isFondation(interaction.member)) {
@@ -77,6 +99,39 @@ async function handleCorrectifInteraction(interaction) {
   }
 
   const sub = interaction.options.getSubcommand(false);
+
+  // --- /correctif modifier ---
+  if (sub === "modifier") {
+    const state = loadState();
+    if (!state.lastMessageId) {
+      await interaction.reply({ content: "❌ Aucun message de correctif trouvé à modifier.", ephemeral: true });
+      return true;
+    }
+    const channel = await interaction.guild.channels.fetch(CORRECTIF_CHANNEL_ID).catch(() => null);
+    const msg = await channel?.messages.fetch(state.lastMessageId).catch(() => null);
+    if (!msg) {
+      await interaction.reply({ content: "❌ Message introuvable (peut-être supprimé).", ephemeral: true });
+      return true;
+    }
+    // Récupérer le contenu actuel des champs pour pré-remplir
+    const currentDesc = msg.embeds[0]?.fields?.map(f => `[${f.name}]\n${f.value.replace(/› /g, "")}`).join("\n\n") || "";
+    await interaction.showModal(
+      new ModalBuilder()
+        .setCustomId("correctif_modal_edit")
+        .setTitle("✏️ Modifier le correctif")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("contenu")
+              .setLabel("Contenu (format libre, modifiez le texte)")
+              .setStyle(TextInputStyle.Paragraph)
+              .setRequired(true)
+              .setValue(currentDesc.slice(0, 4000))
+          )
+        )
+    );
+    return true;
+  }
 
   // --- /correctif ajouter ---
   if (sub === "ajouter") {
@@ -103,11 +158,12 @@ async function handleCorrectifInteraction(interaction) {
     return true;
   }
 
-  await channel.send({ embeds: [buildCorrectifEmbed(state.unreleased, interaction.user)] });
+  const sent = await channel.send({ embeds: [buildCorrectifEmbed(state.unreleased, interaction.user)] });
 
-  state.history.push({ entries: state.unreleased, publishedAt: Date.now(), publishedBy: interaction.user.id });
+  state.history.push({ entries: state.unreleased, publishedAt: Date.now(), publishedBy: interaction.user.id, messageId: sent.id });
   const count = state.unreleased.length;
   state.unreleased = [];
+  state.lastMessageId = sent.id;
   saveState(state);
 
   await interaction.reply({ content: `✅ **${count}** correctif(s) publié(s) dans <#${CORRECTIF_CHANNEL_ID}>.`, ephemeral: true });
