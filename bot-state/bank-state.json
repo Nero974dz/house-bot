@@ -16,6 +16,13 @@
     "1123383269929525371": 0
   },
   "richestMessageId": null,
-  "deposits": {},
+  "deposits": {
+    "dep_1784261913512": {
+      "userId": "1363979726418608148",
+      "amount": 10,
+      "status": "pending",
+      "createdAt": 1784261913513
+    }
+  },
   "frozenAccounts": {}
 }
