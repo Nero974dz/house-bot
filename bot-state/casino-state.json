@@ -471,7 +471,7 @@
       "opponentId": "1521792561293951057",
       "amount": 1,
       "game": "scrabble",
-      "status": "playing",
+      "status": "resolved",
       "createdAt": 1784260394792,
       "racks": {
         "1363979726418608148": [
@@ -494,7 +494,9 @@
         ]
       },
       "words": {},
-      "scrabbleDeadline": 1784260430
+      "scrabbleDeadline": 1784260430,
+      "winnerId": null,
+      "resolvedAt": 1784260430748
     }
   ],
   "blackjack": {
