@@ -3,6 +3,24 @@
   "transactions": [
     {
       "byId": "casino",
+      "at": 1784316462049,
+      "userId": "320348102055690241",
+      "type": "💀 Défaite Casino",
+      "game": "Défi Blackjack 1v1",
+      "stake": 950,
+      "amount": -950
+    },
+    {
+      "byId": "casino",
+      "at": 1784316462049,
+      "userId": "1411724649036910673",
+      "type": "🏆 Victoire Casino",
+      "game": "Défi Blackjack 1v1",
+      "stake": 950,
+      "amount": 855
+    },
+    {
+      "byId": "casino",
       "at": 1784316410199,
       "userId": "320348102055690241",
       "type": "💀 Défaite Casino",
