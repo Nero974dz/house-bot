@@ -1,4 +1,12 @@
 {
   "messageId": "1527531470111903745",
-  "transactions": []
+  "transactions": [
+    {
+      "userId": "1363979726418608148",
+      "type": "💳 Dépôt validé (brut: 10 €, net: 9.5 €)",
+      "amount": 9.5,
+      "byId": "1363979726418608148",
+      "at": 1784262381952
+    }
+  ]
 }
