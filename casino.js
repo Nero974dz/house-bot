@@ -844,7 +844,7 @@ async function playRoulette(interaction, client, color, amount) {
     .setColor(0x2c3e50)
     .setTitle("🎡 Roulette")
     .setDescription("La bille tourne…");
-  if (IMAGES.rouletteSpin) spinEmbed.setImage(IMAGES.rouletteSpin);
+  if (IMAGES.rouletteSpin) spinEmbed.setThumbnail(IMAGES.rouletteSpin);
   await interaction.editReply({ content: "", embeds: [spinEmbed] });
   await sleep(1200);
 
@@ -858,9 +858,9 @@ async function playRoulette(interaction, client, color, amount) {
     .setTitle("🎡 Roulette")
     .setDescription(`La bille s'arrête sur **${number}** ${colorEmoji[resultColor]}`);
 
-  if (resultColor === "rouge" && IMAGES.rouletteRouge) embed.setImage(IMAGES.rouletteRouge);
-  else if (resultColor === "noir" && IMAGES.rouletteNoir) embed.setImage(IMAGES.rouletteNoir);
-  else if (IMAGES.rouletteSpin) embed.setImage(IMAGES.rouletteSpin);
+  if (resultColor === "rouge" && IMAGES.rouletteRouge) embed.setThumbnail(IMAGES.rouletteRouge);
+  else if (resultColor === "noir" && IMAGES.rouletteNoir) embed.setThumbnail(IMAGES.rouletteNoir);
+  else if (IMAGES.rouletteSpin) embed.setThumbnail(IMAGES.rouletteSpin);
 
   let payout = 0;
   if (color === resultColor) {
