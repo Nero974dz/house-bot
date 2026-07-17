@@ -20,8 +20,9 @@
     "dep_1784261913512": {
       "userId": "1363979726418608148",
       "amount": 10,
-      "status": "pending",
-      "createdAt": 1784261913513
+      "status": "sent",
+      "createdAt": 1784261913513,
+      "sentAt": 1784261939490
     }
   },
   "frozenAccounts": {}
