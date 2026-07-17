@@ -25,6 +25,12 @@
       "sentAt": 1784261939490,
       "validatedAt": 1784261981525,
       "validatorId": "1363979726418608148"
+    },
+    "dep_1784262341250": {
+      "userId": "1363979726418608148",
+      "amount": 10,
+      "status": "pending",
+      "createdAt": 1784262341251
     }
   },
   "frozenAccounts": {}
