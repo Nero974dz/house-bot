@@ -2,6 +2,15 @@
   "messageId": "1527540905911914617",
   "transactions": [
     {
+      "byId": "casino",
+      "at": 1784304827638,
+      "userId": "1390507432555581583",
+      "type": "💀 Défaite Casino",
+      "game": "Blackjack",
+      "stake": 1500,
+      "amount": -1500
+    },
+    {
       "userId": "1390507432555581583",
       "type": "💳 Dépôt Validé",
       "game": "brut 1 500,00 €",
