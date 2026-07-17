@@ -4,12 +4,14 @@ const {
   registerAddMoneyCommand,
   registerDelMoneyCommand,
   registerVirementCommand,
+  registerDepositCommand,
   registerClassementSetupCommand,
 } = require("./bank");
 const { registerParisCommand } = require("./paris");
 const { registerSend1Command } = require("./send1");
 const { registerCasinoCommand } = require("./casino");
 const { registerLicenseCommand, registerTabLicenseCommand } = require("./license");
+const { registerIrfSetupCommand } = require("./irf");
 
 async function registerSlashCommands(client, token) {
   const commands = [
@@ -54,12 +56,14 @@ async function registerSlashCommands(client, token) {
     registerAddMoneyCommand(),
     registerDelMoneyCommand(),
     registerVirementCommand(),
+    registerDepositCommand(),
     registerClassementSetupCommand(),
     registerParisCommand(),
     registerSend1Command(),
     registerCasinoCommand(),
     registerLicenseCommand(),
     registerTabLicenseCommand(),
+    registerIrfSetupCommand(),
   ];
 
   const rest = new REST({ version: "10" }).setToken(token);

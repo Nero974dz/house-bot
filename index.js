@@ -79,6 +79,7 @@ const { handleChatInteraction } = require("./chat");
 const { pullAllStateFiles, GITHUB_ENABLED, flushPendingWrites, testGithubWrite } = require("./storage");
 const { handleCorrectifInteraction } = require("./correctif");
 const { handleBankInteraction, handleSecretBankCommand, startRichestLeaderboardScheduler } = require("./bank");
+const { setupIrfPanel, handleIrfInteraction } = require("./irf");
 const { handleParisInteraction } = require("./paris");
 const { handleSend1Interaction } = require("./send1");
 const { handleCasinoInteraction } = require("./casino");
@@ -745,6 +746,7 @@ client.once("ready", async () => {
   await setupCreditTable(client).catch(() => null);
   await setupMissionPanel(client).catch(() => null);
   await setupReopeningAnnouncement(client).catch(() => null);
+  await setupIrfPanel(client).catch((err) => console.error("❌ Erreur panel IRF:", err.message));
 });
 
 client.on(Events.MessageCreate, async (message) => {
@@ -755,6 +757,7 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  if (await handleIrfInteraction(interaction, client)) return;
   if (await handleCreditInteraction(interaction, client)) return;
   if (await handleChatInteraction(interaction)) return;
   if (await handleCorrectifInteraction(interaction)) return;

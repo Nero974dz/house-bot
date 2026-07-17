@@ -105,6 +105,11 @@ function getBalance(userId) {
 /** amount peut être négatif pour retirer. Renvoie le nouveau solde. */
 function addFunds(userId, amount) {
   const state = loadState();
+  // Bloquer toute transaction sur un compte gelé (sauf les amendes IRF qui passent par removeFunds directement)
+  if (state.frozenAccounts && state.frozenAccounts[userId] && amount < 0) {
+    // Les retraits sont bloqués sur compte gelé
+    return typeof state.balances[userId] === "number" ? state.balances[userId] : DEFAULT_BALANCE;
+  }
   ensureAccount(state, userId);
   state.balances[userId] = round2(state.balances[userId] + amount);
   saveState(state);
