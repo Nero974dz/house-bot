@@ -69,58 +69,48 @@ function buildCorrectifEmbed(entries, author) {
 }
 
 async function handleCorrectifInteraction(interaction) {
-  if (
-    !interaction.isChatInputCommand() ||
-    interaction.commandName !== "correctif"
-  ) {
-    return false;
-  }
+  if (!interaction.isChatInputCommand() || interaction.commandName !== "correctif") return false;
 
   if (!isFondation(interaction.member)) {
+    await interaction.reply({ content: `❌ Seule la **Fondation** peut utiliser \`/correctif\`.`, ephemeral: true });
+    return true;
+  }
+
+  const sub = interaction.options.getSubcommand(false);
+
+  // --- /correctif ajouter ---
+  if (sub === "ajouter") {
+    const texte = interaction.options.getString("texte", true);
+    addCorrectifEntry(texte);
+    const state = loadState();
     await interaction.reply({
-      content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut utiliser \`/correctif\`.`,
+      content: `✅ Entrée ajoutée. **${state.unreleased.length}** correctif(s) en attente.`,
       ephemeral: true,
     });
     return true;
   }
 
+  // --- /correctif publier (ou ancienne syntaxe sans sous-commande) ---
   const state = loadState();
   if (!state.unreleased.length) {
-    await interaction.reply({
-      content: "ℹ️ Aucun correctif en attente de publication.",
-      ephemeral: true,
-    });
+    await interaction.reply({ content: "ℹ️ Aucun correctif en attente de publication.", ephemeral: true });
     return true;
   }
 
-  const channel = await interaction.guild.channels
-    .fetch(CORRECTIF_CHANNEL_ID)
-    .catch(() => null);
-
+  const channel = await interaction.guild.channels.fetch(CORRECTIF_CHANNEL_ID).catch(() => null);
   if (!channel?.isTextBased()) {
-    await interaction.reply({
-      content: "❌ Salon des correctifs introuvable. Contactez un admin.",
-      ephemeral: true,
-    });
+    await interaction.reply({ content: "❌ Salon des correctifs introuvable.", ephemeral: true });
     return true;
   }
 
-  await channel.send({
-    embeds: [buildCorrectifEmbed(state.unreleased, interaction.user)],
-  });
+  await channel.send({ embeds: [buildCorrectifEmbed(state.unreleased, interaction.user)] });
 
-  state.history.push({
-    entries: state.unreleased,
-    publishedAt: Date.now(),
-    publishedBy: interaction.user.id,
-  });
+  state.history.push({ entries: state.unreleased, publishedAt: Date.now(), publishedBy: interaction.user.id });
+  const count = state.unreleased.length;
   state.unreleased = [];
   saveState(state);
 
-  await interaction.reply({
-    content: `✅ ${state.history.at(-1).entries.length} correctif(s) publié(s) dans <#${CORRECTIF_CHANNEL_ID}>.`,
-    ephemeral: true,
-  });
+  await interaction.reply({ content: `✅ **${count}** correctif(s) publié(s) dans <#${CORRECTIF_CHANNEL_ID}>.`, ephemeral: true });
   return true;
 }
 

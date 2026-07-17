@@ -50,8 +50,12 @@ async function registerSlashCommands(client, token) {
       .toJSON(),
     new SlashCommandBuilder()
       .setName("correctif")
-      .setDescription(
-        "Publier les correctifs apportés (Fondation uniquement)"
+      .setDescription("Gérer les correctifs (Fondation uniquement)")
+      .addSubcommand(sub => sub.setName("publier").setDescription("Publier tous les correctifs en attente"))
+      .addSubcommand(sub => sub
+        .setName("ajouter")
+        .setDescription("Ajouter un correctif manuellement")
+        .addStringOption(o => o.setName("texte").setDescription("Texte du correctif (ex: [Casino] Nouvelle fonctionnalité...)").setRequired(true).setMaxLength(500))
       )
       .toJSON(),
     registerBankCommand(),
