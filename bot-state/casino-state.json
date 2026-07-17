@@ -196,6 +196,15 @@
       "game": "scrabble",
       "status": "cancelled",
       "createdAt": 1784259858223
+    },
+    {
+      "id": "duel_1784259898628",
+      "challengerId": "1363979726418608148",
+      "opponentId": "1521792561293951057",
+      "amount": 1,
+      "game": "bj1v1",
+      "status": "pending",
+      "createdAt": 1784259898628
     }
   ],
   "blackjack": {
