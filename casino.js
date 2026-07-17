@@ -698,27 +698,9 @@ async function startBlackjack(interaction, client, amount) {
   addJackpot(round2(amount * BLACKJACK_RAKE));
 
   const deck = buildDeck();
-  let player = [deck.pop(), deck.pop()];
-  let dealer = [deck.pop(), deck.pop()];
+  const player = [deck.pop(), deck.pop()];
+  const dealer = [deck.pop(), deck.pop()];
   const capped = isCapped(interaction.user.id, amount);
-
-  if (capped) {
-    // Donner une main forte au croupier (17-20) et faible au joueur (12-16)
-    // On cherche des cartes dans le deck pour construire ça
-    const allCards = [...player, ...dealer, ...deck];
-    // Croupier : viser 18-19 (deux cartes à valeur 9-10 sans dépasser)
-    const highs = allCards.filter(c => cardBaseValue(c.rank) >= 9 && cardBaseValue(c.rank) <= 10);
-    const mids = allCards.filter(c => cardBaseValue(c.rank) >= 5 && cardBaseValue(c.rank) <= 8);
-    if (highs.length >= 2 && mids.length >= 2) {
-      dealer = [highs[0], highs[1]];
-      player = [mids[0], mids[1]];
-      // Reconstruire le deck sans ces cartes
-      const usedIds = new Set([dealer[0], dealer[1], player[0], player[1]]);
-      deck.splice(0, deck.length, ...allCards.filter(c => !usedIds.has(c)));
-      // Mettre les cartes fortes en tête de deck pour les futurs tirages du joueur
-      deck.sort((a, b) => cardBaseValue(b.rank) - cardBaseValue(a.rank));
-    }
-  }
 
   setBjSession(interaction.user.id, { deck, player, dealer, amount, startedAt: Date.now(), capped });
   scheduleBjTimeout(interaction.user.id, async (userId) => {
