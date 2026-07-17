@@ -2,6 +2,15 @@
   "messageId": "1527540905911914617",
   "transactions": [
     {
+      "byId": "casino",
+      "at": 1784324120017,
+      "userId": "1411724649036910673",
+      "type": "💀 Défaite Casino",
+      "game": "Blackjack",
+      "stake": 300,
+      "amount": -300
+    },
+    {
       "userId": "320348102055690241",
       "type": "🔁 Virement envoyé",
       "game": "vers <@1411724649036910673>",
