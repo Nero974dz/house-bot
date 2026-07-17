@@ -445,7 +445,7 @@ function buildBlackjackEmbed({ player, dealer, amount, hideDealer, status, resul
       {
         name: "Main du croupier",
         value: hideDealer
-          ? `${formatCard(dealer[0])} 🂠`
+          ? `${formatCard(dealer[0])} 🂠  =  **${handTotal([dealer[0]])} + ?**`
           : `${formatHand(dealer)}  =  **${handTotal(dealer)}**`,
       },
       { name: "Mise", value: formatEuro(amount), inline: true }
