@@ -1,23 +1,14 @@
 {
   "unreleased": [
-    { "text": "Ajout d'un bouton \"👁️ Voir l'auteur\" (Fondation) pour voir qui a fait un signalement.", "addedAt": 1752624000000 },
-    { "text": "Bilans budget et signalements envoyés automatiquement chaque dimanche dans le salon de logs.", "addedAt": 1752624000000 },
-    { "text": "Correction de la persistance des données : les fichiers d'état ne sont plus perdus à chaque redémarrage du bot (synchronisation automatique avec GitHub).", "addedAt": 1752624000000 },
-    { "text": "Nouveau système de banque personnelle (/bank, 500€ de départ), réutilisable pour un futur casino.", "addedAt": 1752624000000 },
-    { "text": "Nouveau système de paris sportifs Espagne - Argentine (/pari-setup) : mises, cotes, paiement automatique des gagnants.", "addedAt": 1752624000000 },
-    { "text": "Nouvelle commande /send1 (Fondation) pour publier l'annonce des nouveautés (banque + correctifs).", "addedAt": 1752624000000 },
-    { "text": "Casino (/casino-setup) : la machine à sous est remplacée par un vrai Blackjack (tirer/rester face au croupier), en plus de la roulette et des défis PvP, avec jackpot progressif partagé.", "addedAt": 1752624000000 },
-    { "text": "Taxe de 25% sur toutes les transactions Boutique et Mission : paiement désormais automatique via /bank (l'acheteur paie directement dans la boutique, l'intervenant est payé automatiquement en fin de mission). Nouvelle commande /addmoney (Fondation) pour créditer un compte manuellement. Toutes les transactions sont logguées dans le salon de logs.", "addedAt": 1752710400000 },
-    { "text": "Nouveau classement \"Top 5 des plus riches\" publié automatiquement chaque dimanche (même salon que le classement d'activité).", "addedAt": 1752710400000 },
-    { "text": "Bouton \"Actualiser\" (Fondation) sur les classements activité et plus riches pour forcer la mise à jour sans attendre dimanche.", "addedAt": 1752710400000 },
-    { "text": "Correction d'une perte de données possible : le bot attend maintenant que la sauvegarde GitHub soit bien terminée avant de s'arrêter/redémarrer, pour ne plus perdre un changement récent (ex. budget modifié juste avant un redéploiement).", "addedAt": 1752710400000 },
-    { "text": "Suppression complète du système XP/niveaux (/niveau, rôles de niveau, classement \"Plus actifs\", détection d'insultes liée).", "addedAt": 1752710400000 },
-    { "text": "Correction : bank-state.json, paris-state.json et casino-state.json n'étaient jamais retéléchargés depuis GitHub au démarrage — c'était la vraie cause de la perte des soldes /bank après redémarrage.", "addedAt": 1752710400000 },
-    { "text": "Le bot démarre maintenant directement via node (au lieu de npm start) pour que Railway puisse lui envoyer le signal d'arrêt correctement et laisser les sauvegardes se terminer.", "addedAt": 1752710400000 },
-    { "text": "Nouvelle commande /classement-setup (Fondation) pour republier le classement des plus riches à tout moment, sans attendre un redémarrage du bot.", "addedAt": 1752796800000 },
-    { "text": "Casino Blackjack : les parties en cours sont maintenant sauvegardées et survivent à un redémarrage du bot (fini le \"Aucune partie en cours\" avec la mise perdue).", "addedAt": 1752796800000 },
-    { "text": "Défis du casino : on choisit désormais un mini-jeu contre l'adversaire — Pile ou face, Pierre-Feuille-Ciseaux, ou Puissance 4 (grille jouable au tour par tour). Le gagnant remporte les mises (moins la taxe), égalité = remboursement.", "addedAt": 1752796800000 },
-    { "text": "Correction majeure : les sauvegardes du bot vont désormais sur une branche GitHub séparée (bot-data), ce qui arrête la boucle de redéploiements Railway déclenchée par chaque sauvegarde.", "addedAt": 1752796800000 }
+    { "text": "[🏛️ IRF] Nouveau panel de gestion financière : liste de tous les comptes, gel/dégel de compte, historique des transactions par membre, amendes, et vue Trésorerie.", "addedAt": 1752796800000 },
+    { "text": "[🏛️ IRF] La Trésorerie affiche maintenant un résumé propre : Victoires Casino, Défaites Casino, Argent Taxe, Dépôts validés, Amendes, et solde de la Banque de la Maison.", "addedAt": 1752796800000 },
+    { "text": "[🏛️ IRF] Les transactions du casino (gains, pertes), les virements et les dépôts validés apparaissent désormais dans l'historique IRF de chaque membre.", "addedAt": 1752796800000 },
+    { "text": "[🏛️ IRF] Nouveau bouton 🪪 Licences : voir en un clic tous les membres ayant acheté leur licence.", "addedAt": 1752796800000 },
+    { "text": "[🎰 Casino] Accès au casino restreint : il faut désormais soumettre une demande via le bouton **Demander l'accès au casino**. Un agent IRF valide ou refuse après vérification de votre âge. Sans validation, les jeux sont inaccessibles.", "addedAt": 1752796800000 },
+    { "text": "[🏠 Airbnb] Nouveau système de gestion locative complet : ajout/modification/suppression de logements, réservations avec débit automatique (loyer + caution), tickets de séjour, check-in/check-out, remboursement ou retenue de caution, calendrier des réservations et vue revenus & taxes.", "addedAt": 1752796800000 },
+    { "text": "[🏠 Airbnb] Taxe de séjour de 5% automatiquement déclarée à l'IRF sur chaque location validée.", "addedAt": 1752796800000 },
+    { "text": "[🗳️ Élection] Nouveau système d'élection pour élire le Délégué des membres : les candidats se présentent avec un message, la Fondation ouvre le vote, chaque membre vote de façon anonyme, les résultats s'affichent avec classement et photos de profil.", "addedAt": 1752796800000 },
+    { "text": "[💳 Dépôt] La commande /deposit crée maintenant un ticket privé avec l'IBAN à utiliser, un faux chargement de 30 secondes simulant la vérification du virement, puis attend la validation de la Fondation avant de créditer le compte.", "addedAt": 1752796800000 }
   ],
   "history": [
     {
@@ -33,6 +24,16 @@
         { "text": "Nouvelle commande /correctif pour publier automatiquement la liste des ajustements faits.", "addedAt": 1752606000000 }
       ],
       "publishedAt": 1752614400000,
+      "publishedBy": null
+    },
+    {
+      "entries": [
+        { "text": "Correction de la persistance des données GitHub.", "addedAt": 1752710400000 },
+        { "text": "Nouveau système de banque personnelle, casino, boutique, missions, paris.", "addedAt": 1752710400000 },
+        { "text": "Machine à sous, Blackjack, Roulette, Défis 1v1 (PFC, Puissance 4, Scrabble, BJ 1v1).", "addedAt": 1752796800000 },
+        { "text": "Commandes /license, /deposit, /virement, /addmoney, /delbank.", "addedAt": 1752796800000 }
+      ],
+      "publishedAt": 1752796800000,
       "publishedBy": null
     }
   ]
