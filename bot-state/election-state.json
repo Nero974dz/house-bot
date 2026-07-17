@@ -1,6 +1,14 @@
 {
   "messageId": "1527553214545788938",
   "phase": "inscription",
-  "candidates": {},
+  "candidates": {
+    "1363979726418608148": {
+      "userId": "1363979726418608148",
+      "username": "azkdino0",
+      "presentation": "test",
+      "votes": 0,
+      "registeredAt": 1784267477485
+    }
+  },
   "voters": []
 }
