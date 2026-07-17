@@ -1,23 +1,4 @@
 {
-  "messageId": "1527539459581804617",
-  "transactions": [
-    {
-      "byId": "casino",
-      "at": 1784264238581,
-      "userId": "1363979726418608148",
-      "type": "💀 Défaite Casino",
-      "game": "Roulette",
-      "stake": 0.75,
-      "amount": -0.75
-    },
-    {
-      "byId": "casino",
-      "at": 1784264229531,
-      "userId": "1363979726418608148",
-      "type": "💀 Défaite Casino",
-      "game": "Roulette",
-      "stake": 1000,
-      "amount": -1000
-    }
-  ]
+  "messageId": "1527540905911914617",
+  "transactions": []
 }
