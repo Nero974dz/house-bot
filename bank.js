@@ -70,7 +70,7 @@ function logIrfDeposit(userId, gross, net, validatorId) {
   try {
     let irfState = { messageId: null, transactions: [] };
     try { irfState = JSON.parse(fs.readFileSync(IRF_STATE_FILE, "utf8")); } catch {}
-    const entry = { userId, type: `💳 Dépôt validé (brut: ${gross} €, net: ${net} €)`, amount: net, byId: validatorId, at: Date.now() };
+    const entry = { userId, type: "💳 Dépôt Validé", game: `brut ${formatEuro(gross)}`, amount: net, byId: validatorId, at: Date.now() };
     irfState.transactions = [entry, ...(irfState.transactions || [])].slice(0, 200);
     fs.writeFileSync(IRF_STATE_FILE, JSON.stringify(irfState, null, 2));
     persistState("irf-state.json");
@@ -108,7 +108,7 @@ function collectTax(taxAmount, label, fromUserId) {
   try {
     let irfState = { messageId: null, transactions: [] };
     try { irfState = JSON.parse(fs.readFileSync(IRF_STATE_FILE, "utf8")); } catch {}
-    const entry = { userId: TREASURY_ACCOUNT_ID, type: `🏛️ Taxe ${label || ""}${fromUserId ? ` (de <@${fromUserId}>)` : ""}`, amount: taxAmount, byId: fromUserId || "system", at: Date.now() };
+    const entry = { userId: TREASURY_ACCOUNT_ID, type: "🏛️ Argent Taxe", game: label || "", amount: taxAmount, byId: fromUserId || "system", at: Date.now() };
     irfState.transactions = [entry, ...(irfState.transactions || [])].slice(0, 500);
     fs.writeFileSync(IRF_STATE_FILE, JSON.stringify(irfState, null, 2));
     persistState("irf-state.json");

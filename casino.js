@@ -628,7 +628,7 @@ async function settleBlackjack(client, userId) {
 
   // Log IRF
   const bjNet = payout > 0 ? round2(payout - amount) : -amount;
-  logIrfEvent({ userId, type: `🃏 Blackjack (mise: ${formatEuro(amount)})`, amount: bjNet, byId: "casino" });
+  logIrfEvent({ userId, type: bjNet >= 0 ? "🏆 Victoire Casino" : "💀 Défaite Casino", game: "Blackjack", stake: amount, amount: bjNet, byId: "casino" });
 
   clearBjSession(userId);
   await updateCasinoMessage(client, loadState());
@@ -891,7 +891,7 @@ async function playSlots(interaction, client, amount, spins = 1) {
   }
 
   const net = round2(totalWon - totalStake);
-  logIrfEvent({ userId: interaction.user.id, type: `🎰 Slots (${spins} tours, misé: ${formatEuro(totalStake)})`, amount: net, byId: "casino" });
+  logIrfEvent({ userId: interaction.user.id, type: net >= 0 ? "🏆 Victoire Casino" : "💀 Défaite Casino", game: "Machine à sous", stake: totalStake, amount: net, byId: "casino" });
   const color = jackpotWon > 0 ? 0xf1c40f : net > 0 ? 0x2ecc71 : net === 0 ? 0x95a5a6 : 0xe74c3c;
 
   const resultEmbed = new EmbedBuilder()
@@ -965,7 +965,7 @@ async function playRoulette(interaction, client, color, amount) {
   }
 
   const rouletteNet = payout > 0 ? round2(payout - amount) : -amount;
-  logIrfEvent({ userId: interaction.user.id, type: `🎡 Roulette (${color}, mise: ${formatEuro(amount)})`, amount: rouletteNet, byId: "casino" });
+  logIrfEvent({ userId: interaction.user.id, type: rouletteNet >= 0 ? "🏆 Victoire Casino" : "💀 Défaite Casino", game: "Roulette", stake: amount, amount: rouletteNet, byId: "casino" });
 
   embed.addFields({ name: "💰 Votre solde", value: formatEuro(getBalance(interaction.user.id)), inline: true });
 
@@ -1054,8 +1054,8 @@ async function finishDuel(client, duel, winnerId) {
     duel.winnerId = winnerId;
     const loserId = winnerId === duel.challengerId ? duel.opponentId : duel.challengerId;
     const gameLbl = GAME_NAMES[duel.game] || "Duel";
-    logIrfEvent({ userId: winnerId, type: `🏆 Duel ${gameLbl} — Victoire (mise: ${formatEuro(duel.amount)})`, amount: round2(payout - duel.amount), byId: "casino" });
-    logIrfEvent({ userId: loserId, type: `💀 Duel ${gameLbl} — Défaite (mise: ${formatEuro(duel.amount)})`, amount: -duel.amount, byId: "casino" });
+    logIrfEvent({ userId: winnerId, type: "🏆 Victoire Casino", game: `Défi ${gameLbl}`, stake: duel.amount, amount: round2(payout - duel.amount), byId: "casino" });
+    logIrfEvent({ userId: loserId, type: "💀 Défaite Casino", game: `Défi ${gameLbl}`, stake: duel.amount, amount: -duel.amount, byId: "casino" });
   } else {
     // égalité / annulation : on rembourse les deux
     addFunds(duel.challengerId, duel.amount);

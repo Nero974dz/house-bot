@@ -172,7 +172,9 @@ function buildTransactionsEmbed(userId, username) {
   const lines = txs.map(t => {
     const date = new Date(t.at).toLocaleDateString("fr-FR");
     const sign = t.amount > 0 ? "+" : "";
-    return `\`${date}\` ${t.type} — **${sign}${formatEuro(t.amount)}** (par <@${t.byId}>)`;
+    const game = t.game ? ` *(${t.game})* ` : " ";
+    const by = t.byId && t.byId !== "casino" && t.byId !== "system" ? ` — par <@${t.byId}>` : "";
+    return `\`${date}\` ${t.type}${game}**${sign}${formatEuro(t.amount)}**${by}`;
   });
 
   return new EmbedBuilder()
@@ -186,34 +188,41 @@ function buildTransactionsEmbed(userId, username) {
 function buildTresorerieEmbed() {
   const { getBalance, formatEuro, TREASURY_ACCOUNT_ID } = require("./bank");
   const irfState = loadIrfState();
+  const txs = irfState.transactions || [];
 
-  // Dernières 15 entrées de taxes et casino (tout ce qui est byId="casino" ou type contient "Taxe")
-  const allTx = (irfState.transactions || [])
-    .filter(t => t.byId === "casino" || (t.type && t.type.includes("Taxe")) || (t.type && t.type.includes("Dépôt")))
-    .slice(0, 15);
+  // Victoires casino (joueurs qui ont gagné)
+  const victoiresTx = txs.filter(t => t.type === "🏆 Victoire Casino");
+  const victoiresTotal = round2(victoiresTx.reduce((s, t) => s + (t.amount || 0), 0));
 
-  const lines = allTx.map(t => {
-    const date = new Date(t.at).toLocaleDateString("fr-FR");
-    const sign = t.amount > 0 ? "+" : "";
-    const who = t.userId === TREASURY_ACCOUNT_ID ? "Trésor" : `<@${t.userId}>`;
-    return `\`${date}\` ${t.type} — **${sign}${formatEuro(t.amount)}** [${who}]`;
-  });
+  // Défaites casino (joueurs qui ont perdu)
+  const defaitesTx = txs.filter(t => t.type === "💀 Défaite Casino");
+  const defaitesTotal = round2(defaitesTx.reduce((s, t) => s + Math.abs(t.amount || 0), 0));
 
-  // Calcul total casino (gains - pertes = flux net sortant de la banque vers les joueurs)
-  const casinoTx = (irfState.transactions || []).filter(t => t.byId === "casino");
-  const casinoNet = round2(casinoTx.reduce((s, t) => s + (t.amount || 0), 0));
+  // Taxes collectées
+  const taxesTx = txs.filter(t => t.type === "🏛️ Argent Taxe");
+  const taxesTotal = round2(taxesTx.reduce((s, t) => s + (t.amount || 0), 0));
+
+  // Dépôts validés
+  const depotsTx = txs.filter(t => t.type === "💳 Dépôt Validé");
+  const depotsTotal = round2(depotsTx.reduce((s, t) => s + (t.amount || 0), 0));
+
+  // Amendes
+  const amendesTx = txs.filter(t => t.type && t.type.includes("Amende"));
+  const amendesTotal = round2(amendesTx.reduce((s, t) => s + Math.abs(t.amount || 0), 0));
 
   const tresorBalance = getBalance(TREASURY_ACCOUNT_ID);
 
   return new EmbedBuilder()
     .setColor(0xf39c12)
-    .setTitle("🏛️ Trésorerie — Flux financiers")
-    .setDescription(lines.length > 0 ? lines.join("\n") : "Aucun flux enregistré.")
+    .setTitle("🏛️ Trésorerie — Résumé financier")
     .addFields(
-      { name: "💰 Solde Trésorerie", value: formatEuro(tresorBalance), inline: true },
-      { name: "🎰 Flux casino net (joueurs)", value: `${casinoNet >= 0 ? "+" : ""}${formatEuro(casinoNet)}`, inline: true },
+      { name: "🏆 Victoires Casino", value: `${formatEuro(victoiresTotal)}\n*(${victoiresTx.length} partie${victoiresTx.length > 1 ? "s" : ""})*`, inline: true },
+      { name: "💀 Défaites Casino", value: `${formatEuro(defaitesTotal)}\n*(${defaitesTx.length} partie${defaitesTx.length > 1 ? "s" : ""})*`, inline: true },
+      { name: "🏛️ Argent Taxe", value: `${formatEuro(taxesTotal)}\n*(${taxesTx.length} taxe${taxesTx.length > 1 ? "s" : ""})*`, inline: true },
+      { name: "💳 Dépôts Validés", value: `${formatEuro(depotsTotal)}\n*(${depotsTx.length} dépôt${depotsTx.length > 1 ? "s" : ""})*`, inline: true },
+      { name: "💸 Amendes IRF", value: `${formatEuro(amendesTotal)}\n*(${amendesTx.length} amende${amendesTx.length > 1 ? "s" : ""})*`, inline: true },
+      { name: "💰 Banque de la Maison", value: `**${formatEuro(tresorBalance)}**\n*(cumul des taxes)*`, inline: true },
     )
-    .setFooter({ text: "Taxes des virements, dépôts et résultats casino" })
     .setTimestamp();
 }
 
