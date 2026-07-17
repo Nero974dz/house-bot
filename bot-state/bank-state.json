@@ -22,6 +22,13 @@
     "1521795564449173524": 500,
     "1509969106999443678": 462.5
   },
-  "deposits": {},
+  "deposits": {
+    "dep_1784326835053": {
+      "userId": "1390507432555581583",
+      "amount": 3500,
+      "status": "pending",
+      "createdAt": 1784326835053
+    }
+  },
   "richestMessageId": null
 }
