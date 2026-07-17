@@ -2,6 +2,15 @@
   "messageId": "1527540905911914617",
   "transactions": [
     {
+      "byId": "1390508824846139453",
+      "at": 1784319636960,
+      "type": "⚖️ Saisie",
+      "userId": "320348102055690241",
+      "amount": 375,
+      "note": "Fraude ( 500 euro d'une personne pas autoriser a faire des virements)",
+      "date": 1784319636960
+    },
+    {
       "byId": "casino",
       "at": 1784319427021,
       "userId": "1411724649036910673",
