@@ -233,9 +233,9 @@ async function handleBankInteraction(interaction, client) {
   }
 
   if (interaction.isChatInputCommand() && interaction.commandName === "delbank") {
-    if (!isFondation(interaction.member)) {
+    if (!isFondation(interaction.member) && !interaction.member?.roles.cache.has(IRF_ROLE_ID)) {
       await interaction.reply({
-        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut utiliser \`/delbank\`.`,
+        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> ou l'**IRF** peut utiliser \`/delbank\`.`,
         ephemeral: true,
       });
       return true;
