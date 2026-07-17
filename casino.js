@@ -681,7 +681,7 @@ async function startBlackjack(interaction, client, amount) {
   const player = [deck.pop(), deck.pop()];
   const dealer = [deck.pop(), deck.pop()];
 
-  setBjSession(interaction.user.id, { deck, player, dealer, amount });
+  setBjSession(interaction.user.id, { deck, player, dealer, amount, startedAt: Date.now() });
   scheduleBjTimeout(interaction.user.id, async (userId) => {
     const embed = await settleBlackjack(client, userId);
     await interaction.editReply({ embeds: [embed], components: [] }).catch(() => null);
@@ -1446,12 +1446,19 @@ async function handleCasinoInteraction(interaction, client) {
 
   if (interaction.isButton()) {
     if (interaction.customId === BTN.BLACKJACK) {
-      if (getBjSession(interaction.user.id)) {
-        await interaction.reply({
-          content: "❌ Vous avez déjà une partie de blackjack en cours.",
-          ephemeral: true,
-        });
-        return true;
+      const existingSession = getBjSession(interaction.user.id);
+      if (existingSession) {
+        // Si la session date de plus de 5 min, la nettoyer automatiquement
+        const age = Date.now() - (existingSession.startedAt || 0);
+        if (age > BLACKJACK_TIMEOUT_MS) {
+          clearBjSession(interaction.user.id);
+        } else {
+          await interaction.reply({
+            content: "❌ Vous avez déjà une partie de blackjack en cours.",
+            ephemeral: true,
+          });
+          return true;
+        }
       }
       await interaction.showModal(buildAmountModal(MODAL_BLACKJACK, "🃏 Blackjack"));
       return true;
