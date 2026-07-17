@@ -12,6 +12,7 @@ const {
 const { getStatePath, persistState } = require("./storage");
 
 const STATE_FILE = getStatePath("bank-state.json");
+const IRF_STATE_FILE = getStatePath("irf-state.json");
 const DEFAULT_BALANCE = 500;
 /** Compte "Banque de la Maison" : reçoit toutes les taxes (démarre à 0, pas à 500). */
 const TREASURY_ACCOUNT_ID = "1509969106999443678";
@@ -62,6 +63,18 @@ function formatEuro(amount) {
       maximumFractionDigits: 2,
     }) + " €"
   );
+}
+
+/** Enregistre un dépôt validé dans irf-state.json pour que le panel IRF puisse l'afficher. */
+function logIrfDeposit(userId, gross, net, validatorId) {
+  try {
+    let irfState = { messageId: null, transactions: [] };
+    try { irfState = JSON.parse(fs.readFileSync(IRF_STATE_FILE, "utf8")); } catch {}
+    const entry = { userId, type: `💳 Dépôt validé (brut: ${gross} €, net: ${net} €)`, amount: net, byId: validatorId, at: Date.now() };
+    irfState.transactions = [entry, ...(irfState.transactions || [])].slice(0, 200);
+    fs.writeFileSync(IRF_STATE_FILE, JSON.stringify(irfState, null, 2));
+    persistState("irf-state.json");
+  } catch {}
 }
 
 /** Applique la taxe de la maison (25%) sur un montant brut. */
@@ -475,6 +488,7 @@ async function handleBankInteraction(interaction, client) {
     const { gross, tax, net } = applyDepositTax(request.amount);
     addFunds(request.userId, net);
     collectTax(tax);
+    logIrfDeposit(request.userId, gross, net, interaction.user.id);
 
     request.status = "accepted";
     request.validatedAt = Date.now();
