@@ -1,6 +1,14 @@
 {
   "messageId": "1527553214545788938",
   "phase": "inscription",
-  "candidates": {},
+  "candidates": {
+    "1521792561293951057": {
+      "userId": "1521792561293951057",
+      "username": "madamebenshi",
+      "presentation": "Je serais vous représenter je serais une personne a écoute de tout le monde et ouverte d'esprit afin que tout le monde sois content",
+      "votes": 0,
+      "registeredAt": 1784298830432
+    }
+  },
   "voters": []
 }
