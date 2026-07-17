@@ -1,5 +1,10 @@
 {
-  "unreleased": [],
+  "unreleased": [
+    {
+      "text": "[🏛️ IRF] Nouveau panel de gestion financière : liste des comptes, gel/dégel, historique des transactions, amendes et vue Trésorerie.",
+      "addedAt": 1784268866733
+    }
+  ],
   "history": [
     {
       "entries": [
