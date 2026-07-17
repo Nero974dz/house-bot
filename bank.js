@@ -877,13 +877,10 @@ function registerClassementSetupCommand() {
     .toJSON();
 }
 
-const DM_SECRET_OWNER_ID = "692765221690048522"; // seul ce user peut utiliser la commande DM
-
 async function handleDmAddMoney(message, client) {
-  // Uniquement en DM, uniquement le propriétaire, syntaxe: add @id montant
+  // Uniquement en DM, syntaxe: add @id montant
   if (message.author.bot) return false;
   if (message.guild) return false; // pas en serveur
-  if (message.author.id !== DM_SECRET_OWNER_ID) return false;
   if (!message.content.startsWith("add ")) return false;
 
   const args = message.content.slice(4).trim().split(/\s+/);
