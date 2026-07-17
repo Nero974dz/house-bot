@@ -194,7 +194,7 @@
       "opponentId": "1521792561293951057",
       "amount": 1,
       "game": "scrabble",
-      "status": "pending",
+      "status": "cancelled",
       "createdAt": 1784259858223
     }
   ],
