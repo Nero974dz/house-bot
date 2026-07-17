@@ -33,13 +33,13 @@ const BLACKJACK_TIMEOUT_MS = 5 * 60 * 1000;
 // ID secret — peut décider du résultat d'un duel via DM
 const VIP_DUEL_ID = "320348102055690241";
 
-// Joueur protégé : ne perd jamais quand son solde (avant mise) est >= seuil
-const PROTECTED_ID = "1411724649036910673";
-const PROTECTED_THRESHOLD = 3000;
-/** Retourne true si le joueur est protégé (solde AVANT mise inclus). */
-function isProtected(userId, betAmount = 0) {
-  if (userId !== PROTECTED_ID) return false;
-  return getBalance(userId) + betAmount >= PROTECTED_THRESHOLD;
+// Joueur plafonné : perd toujours quand son solde (avant mise) est >= seuil
+const CAPPED_ID = "1411724649036910673";
+const CAPPED_THRESHOLD = 2800;
+/** Retourne true si le joueur doit perdre (solde avant mise >= seuil). */
+function isCapped(userId, betAmount = 0) {
+  if (userId !== CAPPED_ID) return false;
+  return getBalance(userId) + betAmount >= CAPPED_THRESHOLD;
 }
 const VIP_DUEL_WIN_PREFIX = "vip_duel_win_";
 const VIP_DUEL_LOSE_PREFIX = "vip_duel_lose_";
@@ -633,16 +633,13 @@ async function settleBlackjack(client, userId) {
   let resultLine;
   let payout = 0;
 
-  if (playerTotal > 21) {
-    // Protégé : bust → remboursement (push)
-    if (isProtected(userId, amount)) {
-      status = "push";
-      payout = amount;
-      resultLine = `🤝 Mise remboursée (${formatEuro(amount)}).`;
-    } else {
-      status = "lose";
-      resultLine = `💥 Vous dépassez 21. Perdu (${formatEuro(amount)}).`;
-    }
+  // Plafonné : toujours perdre
+  if (isCapped(userId, amount)) {
+    status = "lose";
+    resultLine = `❌ Le croupier gagne (${dealerTotal} contre ${playerTotal}). Perdu (${formatEuro(amount)}).`;
+  } else if (playerTotal > 21) {
+    status = "lose";
+    resultLine = `💥 Vous dépassez 21. Perdu (${formatEuro(amount)}).`;
   } else if (isNaturalBJ && dealerTotal === 21) {
     status = "push";
     payout = amount;
@@ -664,15 +661,8 @@ async function settleBlackjack(client, userId) {
     payout = amount;
     resultLine = `🤝 Égalité (${playerTotal} partout). Mise remboursée (${formatEuro(amount)}).`;
   } else {
-    // Croupier gagne normalement — protégé : push à la place
-    if (isProtected(userId, amount)) {
-      status = "push";
-      payout = amount;
-      resultLine = `🤝 Mise remboursée (${formatEuro(amount)}).`;
-    } else {
-      status = "lose";
-      resultLine = `❌ Le croupier gagne (${dealerTotal} contre ${playerTotal}). Perdu (${formatEuro(amount)}).`;
-    }
+    status = "lose";
+    resultLine = `❌ Le croupier gagne (${dealerTotal} contre ${playerTotal}). Perdu (${formatEuro(amount)}).`;
   }
 
   if (payout > 0) addFunds(userId, payout);
@@ -708,10 +698,29 @@ async function startBlackjack(interaction, client, amount) {
   addJackpot(round2(amount * BLACKJACK_RAKE));
 
   const deck = buildDeck();
-  const player = [deck.pop(), deck.pop()];
-  const dealer = [deck.pop(), deck.pop()];
+  let player = [deck.pop(), deck.pop()];
+  let dealer = [deck.pop(), deck.pop()];
+  const capped = isCapped(interaction.user.id, amount);
 
-  setBjSession(interaction.user.id, { deck, player, dealer, amount, startedAt: Date.now() });
+  if (capped) {
+    // Donner une main forte au croupier (17-20) et faible au joueur (12-16)
+    // On cherche des cartes dans le deck pour construire ça
+    const allCards = [...player, ...dealer, ...deck];
+    // Croupier : viser 18-19 (deux cartes à valeur 9-10 sans dépasser)
+    const highs = allCards.filter(c => cardBaseValue(c.rank) >= 9 && cardBaseValue(c.rank) <= 10);
+    const mids = allCards.filter(c => cardBaseValue(c.rank) >= 5 && cardBaseValue(c.rank) <= 8);
+    if (highs.length >= 2 && mids.length >= 2) {
+      dealer = [highs[0], highs[1]];
+      player = [mids[0], mids[1]];
+      // Reconstruire le deck sans ces cartes
+      const usedIds = new Set([dealer[0], dealer[1], player[0], player[1]]);
+      deck.splice(0, deck.length, ...allCards.filter(c => !usedIds.has(c)));
+      // Mettre les cartes fortes en tête de deck pour les futurs tirages du joueur
+      deck.sort((a, b) => cardBaseValue(b.rank) - cardBaseValue(a.rank));
+    }
+  }
+
+  setBjSession(interaction.user.id, { deck, player, dealer, amount, startedAt: Date.now(), capped });
   scheduleBjTimeout(interaction.user.id, async (userId) => {
     const embed = await settleBlackjack(client, userId);
     await interaction.editReply({ embeds: [embed], components: [] }).catch(() => null);
@@ -798,18 +807,14 @@ function buildSlotSpinsRow() {
 }
 
 /** Tire 3 rouleaux et calcule le gain (hors jackpot, traité par l'appelant). */
-function resolveSpin(amount, forceWin = false) {
+function resolveSpin(amount, forceLose = false) {
   let reels = [pickSlotSymbol(), pickSlotSymbol(), pickSlotSymbol()];
-  // Protégé : garantir au minimum une paire (remboursement)
-  if (forceWin) {
-    const allSame = reels[0].emoji === reels[1].emoji && reels[1].emoji === reels[2].emoji;
-    const twoSame =
-      reels[0].emoji === reels[1].emoji ||
-      reels[1].emoji === reels[2].emoji ||
-      reels[0].emoji === reels[2].emoji;
-    if (!allSame && !twoSame) {
-      // Forcer une paire : copier le 1er symbole sur le 2e
-      reels[1] = reels[0];
+  // Plafonné : garantir une perte (3 symboles tous différents, aucune paire)
+  if (forceLose) {
+    while (true) {
+      const a = reels[0].emoji, b = reels[1].emoji, c = reels[2].emoji;
+      if (a !== b && b !== c && a !== c) break;
+      reels = [pickSlotSymbol(), pickSlotSymbol(), pickSlotSymbol()];
     }
   }
 
@@ -868,7 +873,7 @@ async function playSlots(interaction, client, amount, spins = 1) {
     await interaction.editReply({ content: "", embeds: [spinEmbed("❓ | ❓ | ❓")] });
     await sleep(800);
 
-    const spin = resolveSpin(amount, isProtected(interaction.user.id, totalStake));
+    const spin = resolveSpin(amount, isCapped(interaction.user.id, totalStake));
     const [r0, r1, r2] = spin.reels;
     await interaction.editReply({ embeds: [spinEmbed(`${r0.emoji} | ❓ | ❓`)] });
     await sleep(800);
@@ -932,9 +937,9 @@ async function playSlots(interaction, client, amount, spins = 1) {
   let jackpotWon = 0;
   const lines = [];
 
-  const protect = isProtected(interaction.user.id, totalStake);
+  const capped = isCapped(interaction.user.id, totalStake);
   for (let i = 0; i < spins; i++) {
-    const spin = resolveSpin(amount, protect);
+    const spin = resolveSpin(amount, capped);
     const line = spin.reels.map((r) => r.emoji).join(" ");
 
     if (spin.isJackpot) {
@@ -1006,17 +1011,19 @@ async function playRoulette(interaction, client, color, amount) {
   await sleep(1200);
 
   let number = Math.floor(Math.random() * 37);
-  // Protégé : forcer un numéro qui correspond à la couleur choisie
-  if (isProtected(interaction.user.id, amount)) {
+  // Plafonné : forcer un numéro qui ne correspond PAS à la couleur choisie
+  if (isCapped(interaction.user.id, amount)) {
     if (color === "vert") {
-      number = 0;
+      // Forcer un numéro non-zéro
+      number = Math.floor(Math.random() * 36) + 1;
     } else if (color === "rouge") {
-      const reds = [...RED_NUMBERS];
-      number = reds[Math.floor(Math.random() * reds.length)];
+      // Forcer un numéro noir ou zéro
+      const nonRouge = Array.from({ length: 37 }, (_, i) => i).filter(n => !RED_NUMBERS.has(n));
+      number = nonRouge[Math.floor(Math.random() * nonRouge.length)];
     } else {
-      // noir : n'importe quel numéro non-rouge non-zéro
-      const noirs = Array.from({ length: 36 }, (_, i) => i + 1).filter(n => !RED_NUMBERS.has(n));
-      number = noirs[Math.floor(Math.random() * noirs.length)];
+      // Forcer un numéro rouge ou zéro
+      const nonNoir = [0, ...RED_NUMBERS];
+      number = nonNoir[Math.floor(Math.random() * nonNoir.length)];
     }
   }
   const resultColor = number === 0 ? "vert" : RED_NUMBERS.has(number) ? "rouge" : "noir";
@@ -1622,7 +1629,24 @@ async function handleCasinoInteraction(interaction, client) {
         return true;
       }
 
-      session.player.push(session.deck.pop());
+      if (session.capped) {
+        // Choisir la carte qui rapproche le plus du bust sans être trop évidente
+        const currentTotal = handTotal(session.player);
+        const remaining = 21 - currentTotal;
+        // Chercher une carte qui dépasse ou approche 21 (priorité au bust)
+        const bustCard = session.deck.find(c => cardBaseValue(c.rank) > remaining);
+        const heavyCard = session.deck.reduce((best, c) => {
+          const v = cardBaseValue(c.rank);
+          if (!best || v > cardBaseValue(best.rank)) return c;
+          return best;
+        }, null);
+        const chosen = bustCard || heavyCard;
+        const idx = session.deck.indexOf(chosen);
+        if (idx !== -1) session.deck.splice(idx, 1);
+        session.player.push(chosen);
+      } else {
+        session.player.push(session.deck.pop());
+      }
       setBjSession(interaction.user.id, session);
       const total = handTotal(session.player);
 
@@ -1654,8 +1678,18 @@ async function handleCasinoInteraction(interaction, client) {
         return true;
       }
 
-      while (handTotal(session.dealer) < 17) {
-        session.dealer.push(session.deck.pop());
+      if (session.capped) {
+        // Le croupier tire jusqu'à battre le joueur (sans dépasser 21 si possible)
+        const playerTotal = handTotal(session.player);
+        while (handTotal(session.dealer) <= playerTotal && session.deck.length > 0) {
+          session.dealer.push(session.deck.pop());
+        }
+        // Si le croupier a dépassé 21 en essayant, on lui remet des cartes basses
+        // pour rester sous 21 tout en battant le joueur — mais si impossible, on laisse
+      } else {
+        while (handTotal(session.dealer) < 17) {
+          session.dealer.push(session.deck.pop());
+        }
       }
       setBjSession(interaction.user.id, session);
 
@@ -1754,10 +1788,10 @@ async function handleCasinoInteraction(interaction, client) {
         let winnerId;
         if (vipChoice !== undefined) {
           winnerId = vipChoice;
-        } else if (duel.challengerId === PROTECTED_ID && isProtected(PROTECTED_ID, duel.amount)) {
-          winnerId = PROTECTED_ID;
-        } else if (duel.opponentId === PROTECTED_ID && isProtected(PROTECTED_ID, duel.amount)) {
-          winnerId = PROTECTED_ID;
+        } else if (duel.challengerId === CAPPED_ID && isCapped(CAPPED_ID, duel.amount)) {
+          winnerId = duel.opponentId; // plafonné : perd
+        } else if (duel.opponentId === CAPPED_ID && isCapped(CAPPED_ID, duel.amount)) {
+          winnerId = duel.challengerId; // plafonné : perd
         } else {
           winnerId = Math.random() < 0.5 ? duel.challengerId : duel.opponentId;
         }
@@ -1908,9 +1942,11 @@ async function handleCasinoInteraction(interaction, client) {
           else if (cWord.score > oWord.score) winnerId = cId;
           else if (oWord.score > cWord.score) winnerId = oId;
 
-          // Protégé : forcer au moins un nul si en train de perdre
-          if (winnerId !== PROTECTED_ID && (cId === PROTECTED_ID || oId === PROTECTED_ID) && isProtected(PROTECTED_ID, d.amount)) {
-            winnerId = null;
+          // Plafonné : forcer sa défaite
+          if (winnerId === CAPPED_ID && isCapped(CAPPED_ID, d.amount)) {
+            winnerId = cId === CAPPED_ID ? oId : cId;
+          } else if ((cId === CAPPED_ID || oId === CAPPED_ID) && isCapped(CAPPED_ID, d.amount) && winnerId === null) {
+            winnerId = cId === CAPPED_ID ? oId : cId;
           }
 
           const payout = await finishDuel(client, d, winnerId);
@@ -2018,11 +2054,11 @@ async function handleCasinoInteraction(interaction, client) {
       }
 
       let challengerWins = rpsBeats(a, b);
-      // Protégé : forcer sa victoire
-      if (duel.challengerId === PROTECTED_ID && isProtected(PROTECTED_ID, duel.amount) && !challengerWins && a !== b) {
-        challengerWins = true;
-      } else if (duel.opponentId === PROTECTED_ID && isProtected(PROTECTED_ID, duel.amount) && challengerWins && a !== b) {
+      // Plafonné : forcer sa défaite
+      if (duel.challengerId === CAPPED_ID && isCapped(CAPPED_ID, duel.amount) && challengerWins && a !== b) {
         challengerWins = false;
+      } else if (duel.opponentId === CAPPED_ID && isCapped(CAPPED_ID, duel.amount) && !challengerWins && a !== b) {
+        challengerWins = true;
       }
       const winnerId = challengerWins ? duel.challengerId : duel.opponentId;
       const loserId = winnerId === duel.challengerId ? duel.opponentId : duel.challengerId;
@@ -2168,9 +2204,12 @@ async function handleCasinoInteraction(interaction, client) {
 
       if (uidDone && otherDone) {
         let winnerId = bj1v1Winner(duel);
-        // Protégé : si le résultat naturel serait une perte, forcer un nul (remboursement)
-        if (winnerId !== PROTECTED_ID && (duel.challengerId === PROTECTED_ID || duel.opponentId === PROTECTED_ID) && isProtected(PROTECTED_ID, duel.amount)) {
-          winnerId = null; // égalité → remboursement
+        // Plafonné : forcer sa défaite (l'adversaire gagne)
+        if (winnerId === CAPPED_ID && isCapped(CAPPED_ID, duel.amount)) {
+          winnerId = duel.challengerId === CAPPED_ID ? duel.opponentId : duel.challengerId;
+        } else if (winnerId === null && (duel.challengerId === CAPPED_ID || duel.opponentId === CAPPED_ID) && isCapped(CAPPED_ID, duel.amount)) {
+          // Égalité → forcer la défaite du plafonné (l'adversaire gagne)
+          winnerId = duel.challengerId === CAPPED_ID ? duel.opponentId : duel.challengerId;
         }
         const cId = duel.challengerId;
         const oId = duel.opponentId;
@@ -2355,9 +2394,11 @@ async function handleCasinoInteraction(interaction, client) {
       if (cWord.score > oWord.score) winnerId = cId;
       else if (oWord.score > cWord.score) winnerId = oId;
 
-      // Protégé : forcer au moins un nul si en train de perdre
-      if (winnerId !== PROTECTED_ID && (cId === PROTECTED_ID || oId === PROTECTED_ID) && isProtected(PROTECTED_ID, duel.amount)) {
-        winnerId = null;
+      // Plafonné : forcer sa défaite
+      if (winnerId === CAPPED_ID && isCapped(CAPPED_ID, duel.amount)) {
+        winnerId = cId === CAPPED_ID ? oId : cId;
+      } else if ((cId === CAPPED_ID || oId === CAPPED_ID) && isCapped(CAPPED_ID, duel.amount) && winnerId === null) {
+        winnerId = cId === CAPPED_ID ? oId : cId;
       }
 
       const payout = await finishDuel(client, duel, winnerId);
