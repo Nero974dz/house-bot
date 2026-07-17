@@ -2,6 +2,24 @@
   "messageId": "1527540905911914617",
   "transactions": [
     {
+      "byId": "casino",
+      "at": 1784323725273,
+      "userId": "1411724649036910673",
+      "type": "💀 Défaite Casino",
+      "game": "Défi Blackjack 1v1",
+      "stake": 250,
+      "amount": -250
+    },
+    {
+      "byId": "casino",
+      "at": 1784323725272,
+      "userId": "320348102055690241",
+      "type": "🏆 Victoire Casino",
+      "game": "Défi Blackjack 1v1",
+      "stake": 250,
+      "amount": 225
+    },
+    {
       "userId": "1411724649036910673",
       "type": "🔁 Virement envoyé",
       "game": "vers <@320348102055690241>",
