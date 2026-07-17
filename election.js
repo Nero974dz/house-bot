@@ -40,54 +40,111 @@ function isFondation(member) {
 }
 
 // ---------- EMBEDS ----------
-function buildPanelEmbed(state) {
+async function buildPanelEmbeds(state, guild) {
   const candidates = Object.values(state.candidates);
   const phase = state.phase;
-
-  let color, title, desc;
+  const embeds = [];
 
   if (phase === "inscription") {
-    color = 0x3498db;
-    title = "🗳️ Élection — Délégué des membres";
-    desc  = candidates.length === 0
-      ? "*Aucun candidat pour le moment. Cliquez sur **Se Présenter** !*"
-      : candidates.map((c, i) =>
-          `**${i + 1}. ${c.username}**\n*"${c.presentation}"*`
-        ).join("\n\n");
+    const main = new EmbedBuilder()
+      .setColor(0x2c3e50)
+      .setTitle("🗳️ Élection — Délégué des membres")
+      .setDescription(
+        "Le **Délégué** est le représentant officiel de tous les membres de la Maison.\n" +
+        "Il sert d'intermédiaire entre les résidents et la Fondation.\n​"
+      )
+      .addFields(
+        { name: "📋 Candidats inscrits", value: `**${candidates.length}**`, inline: true },
+        { name: "📌 Phase",              value: "**Inscriptions ouvertes**", inline: true },
+      )
+      .setFooter({ text: "Présentez-vous avant que la Fondation ouvre le vote" })
+      .setTimestamp();
+    embeds.push(main);
+
+    for (let i = 0; i < Math.min(candidates.length, 9); i++) {
+      const c = candidates[i];
+      let avatarURL = null;
+      try {
+        const member = await guild.members.fetch(c.userId).catch(() => null);
+        avatarURL = member?.user.displayAvatarURL({ size: 128 }) || null;
+      } catch {}
+
+      const card = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setAuthor({ name: `Candidat n°${i + 1} — ${c.username}`, iconURL: avatarURL || undefined })
+        .setDescription(`*"${c.presentation}"*`)
+        .setThumbnail(avatarURL)
+        .setTimestamp(c.registeredAt);
+      embeds.push(card);
+    }
 
   } else if (phase === "vote") {
-    color = 0xe67e22;
-    title = "🗳️ Élection — Vote en cours";
-    desc  = `**${candidates.length} candidat${candidates.length > 1 ? "s" : ""}** en lice.\n\nCliquez sur **Voter** pour choisir votre candidat.\nLe vote est **anonyme**.\n\n` +
-            candidates.map((c, i) => `**${i + 1}. ${c.username}**\n*"${c.presentation}"*`).join("\n\n");
+    const main = new EmbedBuilder()
+      .setColor(0xe67e22)
+      .setTitle("🗳️ Élection — Vote en cours !")
+      .setDescription(
+        "Le vote est maintenant **ouvert**.\nCliquez sur **🗳️ Voter** pour choisir votre candidat.\n" +
+        "Votre choix est entièrement **anonyme**.\n​"
+      )
+      .addFields(
+        { name: "🙋 Candidats",        value: `**${candidates.length}**`,       inline: true },
+        { name: "🗳️ Votes exprimés",   value: `**${state.voters.length}**`,     inline: true },
+      )
+      .setFooter({ text: "Un seul vote par membre — anonyme et définitif" })
+      .setTimestamp();
+    embeds.push(main);
+
+    for (let i = 0; i < Math.min(candidates.length, 9); i++) {
+      const c = candidates[i];
+      let avatarURL = null;
+      try {
+        const member = await guild.members.fetch(c.userId).catch(() => null);
+        avatarURL = member?.user.displayAvatarURL({ size: 128 }) || null;
+      } catch {}
+
+      const card = new EmbedBuilder()
+        .setColor(0xe67e22)
+        .setAuthor({ name: `Candidat n°${i + 1} — ${c.username}`, iconURL: avatarURL || undefined })
+        .setDescription(`*"${c.presentation}"*`)
+        .setThumbnail(avatarURL);
+      embeds.push(card);
+    }
 
   } else {
-    // terminee
-    color = 0x2ecc71;
     const sorted = [...candidates].sort((a, b) => b.votes - a.votes);
     const winner = sorted[0];
-    title = "🏆 Élection — Résultats";
-    desc  = `**Délégué élu : ${winner?.username || "—"}** 🎉\n\n` +
-            sorted.map((c, i) =>
-              `**${i + 1}. ${c.username}** — ${c.votes} vote${c.votes > 1 ? "s" : ""}`
-            ).join("\n");
+    let winnerAvatar = null;
+    try {
+      const m = await guild.members.fetch(winner.userId).catch(() => null);
+      winnerAvatar = m?.user.displayAvatarURL({ size: 256 }) || null;
+    } catch {}
+
+    const main = new EmbedBuilder()
+      .setColor(0xf1c40f)
+      .setTitle("🏆 Élection terminée — Résultats")
+      .setDescription(`**🎉 Félicitations à ${winner?.username || "—"} !\nÉlu Délégué des membres.**\n​`)
+      .setThumbnail(winnerAvatar)
+      .setTimestamp();
+    embeds.push(main);
+
+    for (let i = 0; i < Math.min(sorted.length, 9); i++) {
+      const c = sorted[i];
+      let avatarURL = null;
+      try {
+        const member = await guild.members.fetch(c.userId).catch(() => null);
+        avatarURL = member?.user.displayAvatarURL({ size: 128 }) || null;
+      } catch {}
+
+      const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `**${i + 1}.**`;
+      const card = new EmbedBuilder()
+        .setColor(i === 0 ? 0xf1c40f : i === 1 ? 0x95a5a6 : i === 2 ? 0xe67e22 : 0x2c3e50)
+        .setAuthor({ name: `${medal} ${c.username} — ${c.votes} vote${c.votes > 1 ? "s" : ""}`, iconURL: avatarURL || undefined })
+        .setThumbnail(avatarURL);
+      embeds.push(card);
+    }
   }
 
-  const embed = new EmbedBuilder()
-    .setColor(color)
-    .setTitle(title)
-    .setDescription(desc)
-    .setTimestamp();
-
-  if (phase === "inscription") {
-    embed.addFields({ name: "📋 Candidats", value: `**${candidates.length}** inscrit${candidates.length > 1 ? "s" : ""}`, inline: true });
-    embed.setFooter({ text: "Présentez-vous avant que la Fondation ouvre le vote" });
-  } else if (phase === "vote") {
-    embed.addFields({ name: "🗳️ Votes exprimés", value: `**${state.voters.length}**`, inline: true });
-    embed.setFooter({ text: "Vote anonyme — un seul vote par membre" });
-  }
-
-  return embed;
+  return embeds;
 }
 
 function buildPanelComponents(state) {
@@ -114,7 +171,8 @@ async function updatePanel(client) {
   const channel = await client.channels.fetch(ELECTION_CHANNEL_ID).catch(() => null);
   if (!channel?.isTextBased()) return;
   const state = loadState();
-  const payload = { embeds: [buildPanelEmbed(state)], components: buildPanelComponents(state) };
+  const embeds = await buildPanelEmbeds(state, channel.guild);
+  const payload = { embeds, components: buildPanelComponents(state) };
 
   if (state.messageId) {
     const existing = await channel.messages.fetch(state.messageId).catch(() => null);
