@@ -497,6 +497,15 @@
       "scrabbleDeadline": 1784260430,
       "winnerId": null,
       "resolvedAt": 1784260430748
+    },
+    {
+      "id": "duel_1784316295606",
+      "challengerId": "320348102055690241",
+      "opponentId": "1411724649036910673",
+      "amount": 500,
+      "game": "bj1v1",
+      "status": "pending",
+      "createdAt": 1784316295606
     }
   ],
   "blackjack": {}
