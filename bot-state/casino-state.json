@@ -960,6 +960,15 @@
       "turn": "1411724649036910673",
       "winnerId": null,
       "resolvedAt": 1784316366926
+    },
+    {
+      "id": "duel_1784316388917",
+      "challengerId": "320348102055690241",
+      "opponentId": "1411724649036910673",
+      "amount": 500,
+      "game": "bj1v1",
+      "status": "pending",
+      "createdAt": 1784316388917
     }
   ],
   "blackjack": {
