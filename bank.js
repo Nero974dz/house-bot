@@ -101,9 +101,19 @@ function ensureAccount(state, userId) {
 }
 
 /** Verse une taxe dans la Banque de la Maison. */
-function collectTax(taxAmount) {
+function collectTax(taxAmount, label, fromUserId) {
   if (!taxAmount || taxAmount <= 0) return;
-  return addFunds(TREASURY_ACCOUNT_ID, taxAmount);
+  const result = addFunds(TREASURY_ACCOUNT_ID, taxAmount);
+  // Log IRF — écriture directe dans irf-state.json (pas d'import circulaire)
+  try {
+    let irfState = { messageId: null, transactions: [] };
+    try { irfState = JSON.parse(fs.readFileSync(IRF_STATE_FILE, "utf8")); } catch {}
+    const entry = { userId: TREASURY_ACCOUNT_ID, type: `🏛️ Taxe ${label || ""}${fromUserId ? ` (de <@${fromUserId}>)` : ""}`, amount: taxAmount, byId: fromUserId || "system", at: Date.now() };
+    irfState.transactions = [entry, ...(irfState.transactions || [])].slice(0, 500);
+    fs.writeFileSync(IRF_STATE_FILE, JSON.stringify(irfState, null, 2));
+    persistState("irf-state.json");
+  } catch {}
+  return result;
 }
 
 function getTreasuryBalance() {
@@ -280,7 +290,7 @@ async function handleBankInteraction(interaction, client) {
     const { gross, tax, net } = applyTax(amount);
     removeFunds(interaction.user.id, gross);
     addFunds(target.id, net);
-    collectTax(tax);
+    collectTax(tax, "virement", interaction.user.id);
 
     await logTransaction(client, {
       type: "🔁 Virement (/virement)",
@@ -487,7 +497,7 @@ async function handleBankInteraction(interaction, client) {
 
     const { gross, tax, net } = applyDepositTax(request.amount);
     addFunds(request.userId, net);
-    collectTax(tax);
+    collectTax(tax, "dépôt", request.userId);
     logIrfDeposit(request.userId, gross, net, interaction.user.id);
 
     request.status = "accepted";

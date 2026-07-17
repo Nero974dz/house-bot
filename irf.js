@@ -26,6 +26,7 @@ const BTN_DEGELER = "irf_degeler";
 const BTN_TRANSACTIONS = "irf_transactions";
 const BTN_AMENDE = "irf_amende";
 const BTN_AIDE = "irf_aide";
+const BTN_TRESORERIE = "irf_tresorerie";
 const SELECT_GELER = "irf_select_geler";
 const SELECT_DEGELER = "irf_select_degeler";
 const SELECT_TRANSACTIONS = "irf_select_tx";
@@ -102,7 +103,8 @@ function buildIrfPanelEmbed() {
       "**🔓 Dégeler** — Débloquer un compte\n" +
       "**📋 Transactions** — Historique d'un membre\n" +
       "**💸 Amende** — Infliger une amende financière\n" +
-      "**🤝 Aide** — Attribuer une aide financière"
+      "**🤝 Aide** — Attribuer une aide financière\n" +
+      "**🏛️ Trésorerie** — Taxes & flux casino"
     )
     .setFooter({ text: "Accès réservé au rôle IRF" })
     .setTimestamp();
@@ -119,6 +121,7 @@ function buildIrfPanelComponents() {
       new ButtonBuilder().setCustomId(BTN_TRANSACTIONS).setLabel("Transactions").setEmoji("📋").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(BTN_AMENDE).setLabel("Amende").setEmoji("💸").setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId(BTN_AIDE).setLabel("Aide financière").setEmoji("🤝").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(BTN_TRESORERIE).setLabel("Trésorerie").setEmoji("🏛️").setStyle(ButtonStyle.Secondary),
     ),
   ];
 }
@@ -182,23 +185,59 @@ function buildTransactionsEmbed(userId, username) {
     .setTimestamp();
 }
 
+function buildTresorerieEmbed() {
+  const { getBalance, formatEuro, TREASURY_ACCOUNT_ID } = require("./bank");
+  const irfState = loadIrfState();
+
+  // Dernières 15 entrées de taxes et casino (tout ce qui est byId="casino" ou type contient "Taxe")
+  const allTx = (irfState.transactions || [])
+    .filter(t => t.byId === "casino" || (t.type && t.type.includes("Taxe")) || (t.type && t.type.includes("Dépôt")))
+    .slice(0, 15);
+
+  const lines = allTx.map(t => {
+    const date = new Date(t.at).toLocaleDateString("fr-FR");
+    const sign = t.amount > 0 ? "+" : "";
+    const who = t.userId === TREASURY_ACCOUNT_ID ? "Trésor" : `<@${t.userId}>`;
+    return `\`${date}\` ${t.type} — **${sign}${formatEuro(t.amount)}** [${who}]`;
+  });
+
+  // Calcul total casino (gains - pertes = flux net sortant de la banque vers les joueurs)
+  const casinoTx = (irfState.transactions || []).filter(t => t.byId === "casino");
+  const casinoNet = round2(casinoTx.reduce((s, t) => s + (t.amount || 0), 0));
+
+  const tresorBalance = getBalance(TREASURY_ACCOUNT_ID);
+
+  return new EmbedBuilder()
+    .setColor(0xf39c12)
+    .setTitle("🏛️ Trésorerie — Flux financiers")
+    .setDescription(lines.length > 0 ? lines.join("\n") : "Aucun flux enregistré.")
+    .addFields(
+      { name: "💰 Solde Trésorerie", value: formatEuro(tresorBalance), inline: true },
+      { name: "🎰 Flux casino net (joueurs)", value: `${casinoNet >= 0 ? "+" : ""}${formatEuro(casinoNet)}`, inline: true },
+    )
+    .setFooter({ text: "Taxes des virements, dépôts et résultats casino" })
+    .setTimestamp();
+}
+
 async function setupIrfPanel(client) {
   const channel = await client.channels.fetch(IRF_CHANNEL_ID).catch(() => null);
   if (!channel?.isTextBased()) return;
 
   const state = loadIrfState();
+  const payload = { embeds: [buildIrfPanelEmbed()], components: buildIrfPanelComponents() };
 
-  // Supprimer ancien message si existe
+  // Essayer d'éditer le message existant
   if (state.messageId) {
-    const old = await channel.messages.fetch(state.messageId).catch(() => null);
-    if (old) await old.delete().catch(() => null);
+    const existing = await channel.messages.fetch(state.messageId).catch(() => null);
+    if (existing) {
+      await existing.edit(payload).catch(() => null);
+      console.log("Panel IRF mis à jour");
+      return;
+    }
   }
 
-  const msg = await channel.send({
-    embeds: [buildIrfPanelEmbed()],
-    components: buildIrfPanelComponents(),
-  });
-
+  // Message introuvable → en créer un nouveau
+  const msg = await channel.send(payload);
   state.messageId = msg.id;
   saveIrfState(state);
   console.log("Panel IRF publié");
@@ -229,6 +268,14 @@ async function handleIrfInteraction(interaction, client) {
 
   if (!isIRF(interaction.member)) {
     await interaction.reply({ content: "❌ Accès réservé au rôle IRF.", ephemeral: true });
+    return true;
+  }
+
+  // --- Bouton : trésorerie ---
+  if (customId === BTN_TRESORERIE) {
+    await interaction.deferReply({ ephemeral: true });
+    const embed = buildTresorerieEmbed();
+    await interaction.editReply({ embeds: [embed] });
     return true;
   }
 
