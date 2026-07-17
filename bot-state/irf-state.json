@@ -3,6 +3,15 @@
   "transactions": [
     {
       "byId": "casino",
+      "at": 1784302125926,
+      "userId": "1411724649036910673",
+      "type": "🏆 Victoire Casino",
+      "game": "Blackjack",
+      "stake": 100,
+      "amount": 100
+    },
+    {
+      "byId": "casino",
       "at": 1784301271380,
       "userId": "1411724649036910673",
       "type": "🏆 Victoire Casino",
