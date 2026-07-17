@@ -512,10 +512,15 @@ async function handleBankInteraction(interaction, client) {
     addFunds(request.userId, gross);
     logIrfDeposit(request.userId, gross, gross, interaction.user.id);
 
-    request.status = "accepted";
-    request.validatedAt = Date.now();
-    request.validatorId = interaction.user.id;
-    saveState(state);
+    // Recharger après addFunds pour ne pas écraser les balances qu'il vient de sauvegarder
+    const state2 = loadState();
+    const req2 = state2.deposits[requestId];
+    if (req2) {
+      req2.status = "accepted";
+      req2.validatedAt = Date.now();
+      req2.validatorId = interaction.user.id;
+    }
+    saveState(state2);
 
     await logTransaction(client, {
       type: "🏦 Dépôt validé (/deposit)",
