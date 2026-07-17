@@ -35,12 +35,36 @@ function addCorrectifEntry(text) {
 }
 
 function buildCorrectifEmbed(entries, author) {
-  const lines = entries.map((e) => `• ${e.text}`).join("\n");
+  // Regrouper par catégorie (préfixe entre crochets ex: [IRF])
+  const groups = {};
+  const noGroup = [];
+  for (const e of entries) {
+    const match = e.text.match(/^\[(.+?)\]\s*/);
+    if (match) {
+      const cat = match[1];
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(e.text.replace(/^\[.+?\]\s*/, ""));
+    } else {
+      noGroup.push(e.text);
+    }
+  }
+
+  const fields = [];
+  for (const [cat, items] of Object.entries(groups)) {
+    fields.push({ name: cat, value: items.map(i => `› ${i}`).join("\n"), inline: false });
+  }
+  if (noGroup.length) {
+    fields.push({ name: "Divers", value: noGroup.map(i => `› ${i}`).join("\n"), inline: false });
+  }
+
+  const version = `v${new Date().toLocaleDateString("fr-FR").replace(/\//g, ".")}`;
+
   return new EmbedBuilder()
     .setColor(0x1abc9c)
-    .setTitle("🛠️ Correctifs")
-    .setDescription(lines.slice(0, 4000))
-    .setFooter({ text: `Publié par ${author.tag}` })
+    .setTitle(`📦 Mise à jour ${version}`)
+    .setDescription("Voici les nouveautés et améliorations apportées aujourd'hui à la Maison.\n​")
+    .addFields(fields)
+    .setFooter({ text: `Publié par ${author.username} · ${entries.length} changement${entries.length > 1 ? "s" : ""}` })
     .setTimestamp();
 }
 
