@@ -55,10 +55,10 @@ function pickSlotSymbol() {
  */
 const IMAGES = {
   banner: null,
-  blackjack: "https://thumbs.dreamstime.com/b/playing-blackjack-table-4506947.jpg",
-  rouletteSpin: "https://www.goforquiz.com/wp-content/uploads/2023/10/casino.gif",
-  rouletteRouge: "https://media.giphy.com/media/l2SpYSNrKPONySXYY/giphy.gif",
-  rouletteNoir: "https://media1.tenor.com/m/A2DlRFtGcmMAAAAC/rulet.gif",
+  blackjack: "https://cdn.discordapp.com/attachments/1527137810941739188/1527490584082776164/bj.webp?ex=6a5ad9f6&is=6a598876&hm=db643f7cea23dacd76e83a43722e0b85f560526680ec7b111a3b4306e407c4cb&",
+  rouletteSpin: "https://cdn.discordapp.com/attachments/1527137810941739188/1527490584456073236/rr.gif?ex=6a5ad9f6&is=6a598876&hm=7be347b36796e70303040fa581f83eb7d816794e3d0758ee5e06f70c3a811642&",
+  rouletteRouge: "https://cdn.discordapp.com/attachments/1527137810941739188/1527490583730327663/rrr.webp?ex=6a5ad9f6&is=6a598876&hm=d23be14eec3965bba66689d0a441a3ac2c87a5e7f54207147a93863415cbc401&",
+  rouletteNoir: "https://cdn.discordapp.com/attachments/1527137810941739188/1527490583453499402/rrn.gif?ex=6a5ad9f6&is=6a598876&hm=e9826113068abd0788b04b918d870d46ab091311b9574e2d54e30b4cd1b39cd0&",
   slotSpin: null, // gif de défilement (lien direct .gif requis)
   slotJackpot: null, // image affichée au jackpot (lien direct requis)
   duel: null,
