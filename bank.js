@@ -173,6 +173,30 @@ function hasEnough(userId, amount) {
   return getBalance(userId) >= amount;
 }
 
+/** Initialise tous les membres du serveur à DEFAULT_BALANCE s'ils n'ont pas encore de compte.
+ *  Appelée au démarrage après la synchronisation GitHub. */
+async function initAllMembersBalance(guild) {
+  try {
+    await guild.members.fetch();
+    const state = loadState();
+    let changed = false;
+    for (const [id, member] of guild.members.cache) {
+      if (member.user.bot) continue;
+      if (id === TREASURY_ACCOUNT_ID) continue;
+      if (typeof state.balances[id] !== "number") {
+        state.balances[id] = DEFAULT_BALANCE;
+        changed = true;
+      }
+    }
+    if (changed) {
+      saveState(state);
+      console.log(`✅ Comptes bank initialisés pour les membres sans solde.`);
+    }
+  } catch (err) {
+    console.error("Erreur initAllMembersBalance:", err.message);
+  }
+}
+
 function buildBalanceEmbed(user, balance) {
   return new EmbedBuilder()
     .setColor(0xf1c40f)
@@ -1169,4 +1193,5 @@ module.exports = {
   DEFAULT_BALANCE,
   TAX_RATE,
   TRANSACTION_LOG_CHANNEL_ID,
+  initAllMembersBalance,
 };

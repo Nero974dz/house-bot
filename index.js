@@ -78,7 +78,7 @@ const { setupMissionPanel, handleMissionInteraction } = require("./missions");
 const { handleChatInteraction } = require("./chat");
 const { pullAllStateFiles, GITHUB_ENABLED, flushPendingWrites, testGithubWrite } = require("./storage");
 const { handleCorrectifInteraction } = require("./correctif");
-const { handleBankInteraction, handleSecretBankCommand, handleDmAddMoney, startRichestLeaderboardScheduler } = require("./bank");
+const { handleBankInteraction, handleSecretBankCommand, handleDmAddMoney, startRichestLeaderboardScheduler, initAllMembersBalance, addFunds } = require("./bank");
 const { setupIrfPanel, handleIrfInteraction } = require("./irf");
 const { setupAirbnbPanel, handleAirbnbInteraction } = require("./airbnb");
 const { setupElectionPanel, handleElectionInteraction } = require("./election");
@@ -726,6 +726,11 @@ client.once("ready", async () => {
     );
   }
 
+  // Initialiser tous les membres à 500€ sans qu'ils aient besoin de faire /bank
+  for (const guild of client.guilds.cache.values()) {
+    await initAllMembersBalance(guild).catch((err) => console.error("Erreur init bank:", err.message));
+  }
+
   await setupRulesMessage(client);
   await setupTicketPanel(client);
 
@@ -1057,6 +1062,9 @@ client.on("guildMemberAdd", async (member) => {
   if (memberHasHierarchyRole(member)) {
     await refreshHierarchy(member.guild, client).catch(() => null);
   }
+
+  // Créer le compte bank immédiatement (500€) sans que le membre fasse /bank
+  try { addFunds(member.id, 0); } catch {}
 });
 
 let shuttingDown = false;
