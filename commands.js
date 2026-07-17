@@ -6,6 +6,8 @@ const {
   registerVirementCommand,
   registerDepositCommand,
   registerClassementSetupCommand,
+  registerSaisieCommand,
+  registerAvertissementCommand,
 } = require("./bank");
 const { registerParisCommand } = require("./paris");
 const { registerSend1Command } = require("./send1");
@@ -65,6 +67,8 @@ async function registerSlashCommands(client, token) {
     registerVirementCommand(),
     registerDepositCommand(),
     registerClassementSetupCommand(),
+    registerSaisieCommand(),
+    registerAvertissementCommand(),
     registerParisCommand(),
     registerSend1Command(),
     registerCasinoCommand(),

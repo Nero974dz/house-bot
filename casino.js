@@ -11,7 +11,7 @@ const {
   SlashCommandBuilder,
 } = require("discord.js");
 const { getStatePath, persistState } = require("./storage");
-const { hasEnough, removeFunds, addFunds, getBalance, formatEuro, isAccountFrozen } = require("./bank");
+const { hasEnough, removeFunds, addFunds, getBalance, formatEuro, isAccountFrozen, BLACKLIST_CASINO_ROLE_ID } = require("./bank");
 const { logIrfEvent } = require("./irf-log");
 
 const CASINO_CHANNEL_ID = "1527054335928827954";
@@ -1409,6 +1409,13 @@ async function handleCasinoInteraction(interaction, client) {
       if (isAccountFrozen(interaction.user.id)) {
         await interaction.reply({
           content: "❄️ Votre compte est **gelé**. Vous ne pouvez pas jouer au casino.",
+          ephemeral: true,
+        });
+        return true;
+      }
+      if (interaction.member?.roles.cache.has(BLACKLIST_CASINO_ROLE_ID)) {
+        await interaction.reply({
+          content: "🚫 Vous êtes **blacklisté du casino**. Votre accès a été révoqué par l'IRF.",
           ephemeral: true,
         });
         return true;

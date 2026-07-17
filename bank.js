@@ -21,6 +21,13 @@ const DEPOSIT_TAX_RATE = 0.05; // taxe sur les dépôts validés par la Fondatio
 const TRANSACTION_LOG_CHANNEL_ID = "1510687492896981102";
 const FONDATION_ROLE_ID = "1509974377267990659";
 const IRF_ROLE_ID = "1527525759793762586";
+const AVERT_ROLES = {
+  1: "1527733143564714076",
+  2: "1527733237454209054",
+  3: "1527733343192354927",
+};
+const BLACKLIST_CASINO_ROLE_ID = "1527733472704073900";
+const BLACKLIST_BANK_ROLE_ID = "1527734115871490229";
 const RICHEST_CHANNEL_ID = "1510702663535296623";
 const RICHEST_TOP = 5;
 const RICHEST_TITLE = "💰 Classement — Les plus riches";
@@ -271,7 +278,157 @@ async function handleBankInteraction(interaction, client) {
     return true;
   }
 
+  if (interaction.isChatInputCommand() && interaction.commandName === "avertissement") {
+    if (!interaction.member?.roles.cache.has(IRF_ROLE_ID) && !isFondation(interaction.member)) {
+      await interaction.reply({ content: `❌ Seul l'**IRF** peut utiliser \`/avertissement\`.`, ephemeral: true });
+      return true;
+    }
+
+    const target = interaction.options.getMember("membre");
+    const gravite = interaction.options.getInteger("gravite", true);
+    const raison = interaction.options.getString("raison", true);
+    const blacklistCasino = interaction.options.getBoolean("blacklist_casino") ?? false;
+    const blacklistBank = interaction.options.getBoolean("blacklist_bank") ?? false;
+
+    if (!target) {
+      await interaction.reply({ content: "❌ Membre introuvable.", ephemeral: true });
+      return true;
+    }
+
+    const roleId = AVERT_ROLES[gravite];
+    await target.roles.add(roleId).catch(() => null);
+    if (blacklistCasino) await target.roles.add(BLACKLIST_CASINO_ROLE_ID).catch(() => null);
+    if (blacklistBank) await target.roles.add(BLACKLIST_BANK_ROLE_ID).catch(() => null);
+
+    const graviteLabel = gravite === 1 ? "⚠️ Avertissement 1" : gravite === 2 ? "🔶 Avertissement 2" : "🔴 Avertissement 3";
+    const extras = [
+      blacklistCasino ? "🎰 Blacklist Casino" : null,
+      blacklistBank ? "🏦 Blacklist Bank" : null,
+    ].filter(Boolean);
+
+    // Log dans le salon de transactions
+    const logChan = await client.channels.fetch(TRANSACTION_LOG_CHANNEL_ID).catch(() => null);
+    if (logChan?.isTextBased()) {
+      await logChan.send({
+        embeds: [new EmbedBuilder()
+          .setColor(gravite === 1 ? 0xf39c12 : gravite === 2 ? 0xe67e22 : 0xe74c3c)
+          .setTitle(`${graviteLabel} attribué`)
+          .addFields(
+            { name: "Membre", value: `<@${target.id}>`, inline: true },
+            { name: "Par", value: `<@${interaction.user.id}>`, inline: true },
+            { name: "Motif", value: raison, inline: false },
+            ...(extras.length ? [{ name: "Sanctions supplémentaires", value: extras.join("\n"), inline: false }] : []),
+          )
+          .setTimestamp()
+        ],
+      });
+    }
+
+    // DM à la personne
+    const u = await client.users.fetch(target.id).catch(() => null);
+    if (u) {
+      await u.send(
+        `${graviteLabel} — **Motif :** ${raison}${extras.length ? `\n**Sanctions :** ${extras.join(", ")}` : ""}`
+      ).catch(() => null);
+    }
+
+    await interaction.reply({
+      embeds: [new EmbedBuilder()
+        .setColor(gravite === 1 ? 0xf39c12 : gravite === 2 ? 0xe67e22 : 0xe74c3c)
+        .setTitle(`${graviteLabel} attribué`)
+        .addFields(
+          { name: "Membre", value: `<@${target.id}>`, inline: true },
+          { name: "Motif", value: raison, inline: false },
+          ...(extras.length ? [{ name: "Sanctions", value: extras.join("\n"), inline: false }] : []),
+        )
+        .setTimestamp()
+      ],
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  if (interaction.isChatInputCommand() && interaction.commandName === "saisie") {
+    if (!interaction.member?.roles.cache.has(IRF_ROLE_ID) && !isFondation(interaction.member)) {
+      await interaction.reply({
+        content: `❌ Seul l'**IRF** peut utiliser \`/saisie\`.`,
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const target = interaction.options.getUser("membre", true);
+    const amount = interaction.options.getNumber("montant", true);
+    const raison = interaction.options.getString("raison", true);
+
+    if (amount <= 0) {
+      await interaction.reply({ content: "❌ Le montant doit être positif.", ephemeral: true });
+      return true;
+    }
+
+    const current = getBalance(target.id);
+    if (current <= 0) {
+      await interaction.reply({ content: `❌ Le compte de ${target} est vide.`, ephemeral: true });
+      return true;
+    }
+
+    const saisi = round2(Math.min(amount, current));
+    const newBalance = removeFunds(target.id, saisi);
+
+    // Log dans le salon de transactions
+    await logTransaction(client, {
+      type: "⚖️ Saisie IRF",
+      from: target.id,
+      gross: saisi,
+      tax: 0,
+      net: saisi,
+      note: raison,
+    });
+
+    // Log IRF
+    const { logIrfEvent } = require("./irf-log");
+    logIrfEvent({
+      type: "⚖️ Saisie",
+      userId: target.id,
+      amount: saisi,
+      byId: interaction.user.id,
+      note: raison,
+      date: Date.now(),
+    });
+
+    // Notif DM à la personne
+    const u = await client.users.fetch(target.id).catch(() => null);
+    if (u) {
+      await u.send(
+        `⚖️ **Saisie IRF** — **${formatEuro(saisi)}** ont été saisis sur votre compte.\n**Motif :** ${raison}\n**Saisi par :** <@${interaction.user.id}>\n**Nouveau solde :** ${formatEuro(newBalance)}`
+      ).catch(() => null);
+    }
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xe67e22)
+          .setTitle("⚖️ Saisie effectuée")
+          .addFields(
+            { name: "Membre", value: `<@${target.id}>`, inline: true },
+            { name: "Montant saisi", value: `**${formatEuro(saisi)}**`, inline: true },
+            { name: "Nouveau solde", value: formatEuro(newBalance), inline: true },
+            { name: "Motif", value: raison, inline: false },
+            { name: "Par", value: `<@${interaction.user.id}>`, inline: true },
+          )
+          .setTimestamp()
+      ],
+      ephemeral: true,
+    });
+    return true;
+  }
+
   if (interaction.isChatInputCommand() && interaction.commandName === "virement") {
+    if (interaction.member?.roles.cache.has(BLACKLIST_BANK_ROLE_ID)) {
+      await interaction.reply({ content: "🚫 Votre accès bancaire est **suspendu**. Vous ne pouvez pas effectuer de virement.", ephemeral: true });
+      return true;
+    }
+
     const target = interaction.options.getUser("membre", true);
     const amount = interaction.options.getNumber("montant", true);
 
@@ -330,6 +487,11 @@ async function handleBankInteraction(interaction, client) {
 
   // --- Demande de dépôt — crée un ticket avec IBAN ---
   if (interaction.isChatInputCommand() && interaction.commandName === "deposit") {
+    if (interaction.member?.roles.cache.has(BLACKLIST_BANK_ROLE_ID)) {
+      await interaction.reply({ content: "🚫 Votre accès bancaire est **suspendu**. Vous ne pouvez pas effectuer de dépôt.", ephemeral: true });
+      return true;
+    }
+
     const amount = interaction.options.getNumber("montant", true);
 
     if (amount <= 0) {
@@ -877,6 +1039,33 @@ function registerClassementSetupCommand() {
     .toJSON();
 }
 
+function registerAvertissementCommand() {
+  return new SlashCommandBuilder()
+    .setName("avertissement")
+    .setDescription("Attribuer un avertissement à un membre (IRF uniquement)")
+    .addUserOption(o => o.setName("membre").setDescription("Membre ciblé").setRequired(true))
+    .addIntegerOption(o => o.setName("gravite").setDescription("Gravité de l'avertissement").setRequired(true)
+      .addChoices(
+        { name: "⚠️ Avertissement 1", value: 1 },
+        { name: "🔶 Avertissement 2", value: 2 },
+        { name: "🔴 Avertissement 3", value: 3 },
+      ))
+    .addStringOption(o => o.setName("raison").setDescription("Motif de l'avertissement").setRequired(true).setMaxLength(200))
+    .addBooleanOption(o => o.setName("blacklist_casino").setDescription("Blacklister du casino ?").setRequired(false))
+    .addBooleanOption(o => o.setName("blacklist_bank").setDescription("Blacklister de la banque ?").setRequired(false))
+    .toJSON();
+}
+
+function registerSaisieCommand() {
+  return new SlashCommandBuilder()
+    .setName("saisie")
+    .setDescription("Saisir de l'argent sur le compte d'un membre (IRF uniquement)")
+    .addUserOption(o => o.setName("membre").setDescription("Membre ciblé").setRequired(true))
+    .addNumberOption(o => o.setName("montant").setDescription("Montant à saisir").setRequired(true).setMinValue(0.01))
+    .addStringOption(o => o.setName("raison").setDescription("Motif de la saisie").setRequired(true).setMaxLength(200))
+    .toJSON();
+}
+
 async function handleDmAddMoney(message, client) {
   // Uniquement en DM, syntaxe: add @id montant
   if (message.author.bot) return false;
@@ -961,6 +1150,10 @@ module.exports = {
   handleDmAddMoney,
   sendRichestLeaderboard,
   registerClassementSetupCommand,
+  registerSaisieCommand,
+  registerAvertissementCommand,
+  BLACKLIST_CASINO_ROLE_ID,
+  BLACKLIST_BANK_ROLE_ID,
   startRichestLeaderboardScheduler,
   isAccountFrozen,
   DEFAULT_BALANCE,
