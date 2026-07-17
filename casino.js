@@ -70,6 +70,15 @@ const RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 const SUITS = ["♠️", "♥️", "♦️", "♣️"];
 
+const CASINO_ACCESS_ROLE_ID = "1527534853246160967";
+const CASINO_TICKET_CATEGORY_ID = "1527524331779788881";
+const IRF_ROLE_ID = "1527525759793762586";
+const BTN_ACCESS_REQUEST = "casino_access_request";
+const MODAL_ACCESS = "casino_modal_access";
+const ACCESS_ACCEPT_PREFIX = "casino_access_accept_"; // + userId
+const ACCESS_REFUSE_PREFIX = "casino_access_refuse_"; // + userId
+const ACCESS_VERIFY_PREFIX = "casino_access_verify_"; // + userId
+
 const BTN = {
   BLACKJACK: "casino_blackjack",
   ROULETTE: "casino_roulette",
@@ -380,7 +389,18 @@ function buildCasinoComponents() {
         .setEmoji("⚔️")
         .setStyle(ButtonStyle.Danger)
     ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(BTN_ACCESS_REQUEST)
+        .setLabel("Demander l'accès au casino")
+        .setEmoji("🎟️")
+        .setStyle(ButtonStyle.Secondary)
+    ),
   ];
+}
+
+function hasCasinoAccess(member) {
+  return member?.roles.cache.has(CASINO_ACCESS_ROLE_ID) ?? false;
 }
 
 async function updateCasinoMessage(client, state) {
@@ -1190,6 +1210,203 @@ async function handleCasinoInteraction(interaction, client) {
       ephemeral: true,
     });
     return true;
+  }
+
+  // --- Demande d'accès casino ---
+  if (interaction.isButton() && interaction.customId === BTN_ACCESS_REQUEST) {
+    if (hasCasinoAccess(interaction.member)) {
+      await interaction.reply({ content: "✅ Vous avez déjà accès au casino.", ephemeral: true });
+      return true;
+    }
+    await interaction.showModal(
+      new ModalBuilder()
+        .setCustomId(MODAL_ACCESS)
+        .setTitle("🎟️ Demande d'accès au casino")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("age")
+              .setLabel("Quel est votre âge ?")
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+              .setPlaceholder("ex: 25")
+              .setMinLength(1)
+              .setMaxLength(3)
+          )
+        )
+    );
+    return true;
+  }
+
+  // --- Soumission modal âge → créer ticket ---
+  if (interaction.isModalSubmit() && interaction.customId === MODAL_ACCESS) {
+    const age = interaction.fields.getTextInputValue("age").trim();
+    const ageNum = parseInt(age, 10);
+
+    if (isNaN(ageNum) || ageNum < 1 || ageNum > 120) {
+      await interaction.reply({ content: "❌ Âge invalide.", ephemeral: true });
+      return true;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const guild = interaction.guild;
+    const category = await client.channels.fetch(CASINO_TICKET_CATEGORY_ID).catch(() => null);
+
+    // Vérifier si un ticket existe déjà pour cet utilisateur
+    const existingName = `casino-${interaction.user.username}`.toLowerCase().slice(0, 100);
+    const existing = guild.channels.cache.find(c => c.name === existingName);
+    if (existing) {
+      await interaction.editReply({ content: `❌ Vous avez déjà un ticket ouvert : ${existing}.` });
+      return true;
+    }
+
+    const ticketChannel = await guild.channels.create({
+      name: `casino-${interaction.user.username}`,
+      parent: category?.id || null,
+      permissionOverwrites: [
+        { id: guild.roles.everyone, deny: ["ViewChannel"] },
+        { id: interaction.user.id, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+        { id: IRF_ROLE_ID, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+      ],
+    }).catch(() => null);
+
+    if (!ticketChannel) {
+      await interaction.editReply({ content: "❌ Impossible de créer le ticket." });
+      return true;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0x9b59b6)
+      .setTitle("🎟️ Demande d'accès au casino")
+      .setDescription(`<@${interaction.user.id}> souhaite accéder au casino.`)
+      .addFields(
+        { name: "👤 Membre", value: `<@${interaction.user.id}> (${interaction.user.username})`, inline: true },
+        { name: "🎂 Âge déclaré", value: `**${ageNum} ans**`, inline: true },
+      )
+      .setFooter({ text: "Un membre IRF doit valider ou refuser cette demande." })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${ACCESS_ACCEPT_PREFIX}${interaction.user.id}`)
+        .setLabel("Valider l'accès")
+        .setEmoji("✅")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`${ACCESS_VERIFY_PREFIX}${interaction.user.id}`)
+        .setLabel("Vérification")
+        .setEmoji("🔍")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`${ACCESS_REFUSE_PREFIX}${interaction.user.id}`)
+        .setLabel("Refuser")
+        .setEmoji("❌")
+        .setStyle(ButtonStyle.Danger),
+    );
+
+    await ticketChannel.send({ content: `<@&${IRF_ROLE_ID}>`, embeds: [embed], components: [row] });
+    await interaction.editReply({ content: `✅ Votre demande a été envoyée dans ${ticketChannel}. Un agent IRF va traiter votre dossier.` });
+    return true;
+  }
+
+  // --- IRF : valider accès casino ---
+  if (interaction.isButton() && interaction.customId.startsWith(ACCESS_ACCEPT_PREFIX)) {
+    if (!interaction.member?.roles.cache.has(IRF_ROLE_ID)) {
+      await interaction.reply({ content: "❌ Accès réservé au rôle IRF.", ephemeral: true });
+      return true;
+    }
+    const targetId = interaction.customId.slice(ACCESS_ACCEPT_PREFIX.length);
+    const member = await interaction.guild.members.fetch(targetId).catch(() => null);
+    if (!member) {
+      await interaction.reply({ content: "❌ Membre introuvable.", ephemeral: true });
+      return true;
+    }
+    await member.roles.add(CASINO_ACCESS_ROLE_ID).catch(() => null);
+
+    const confirmEmbed = new EmbedBuilder()
+      .setColor(0x2ecc71)
+      .setTitle("✅ Accès casino accordé")
+      .setDescription(`L'accès au casino a été accordé à <@${targetId}> par <@${interaction.user.id}>.`)
+      .setTimestamp();
+
+    await interaction.update({ embeds: [confirmEmbed], components: [] });
+
+    // DM l'utilisateur
+    const user = await client.users.fetch(targetId).catch(() => null);
+    if (user) {
+      await user.send("✅ Votre demande d'accès au casino a été **validée** par l'IRF. Vous pouvez maintenant jouer !").catch(() => null);
+    }
+
+    // Fermer le ticket après 5s
+    setTimeout(() => interaction.channel?.delete().catch(() => null), 5000);
+    return true;
+  }
+
+  // --- IRF : demander vérification ---
+  if (interaction.isButton() && interaction.customId.startsWith(ACCESS_VERIFY_PREFIX)) {
+    if (!interaction.member?.roles.cache.has(IRF_ROLE_ID)) {
+      await interaction.reply({ content: "❌ Accès réservé au rôle IRF.", ephemeral: true });
+      return true;
+    }
+    const targetId = interaction.customId.slice(ACCESS_VERIFY_PREFIX.length);
+
+    const verifyEmbed = new EmbedBuilder()
+      .setColor(0xf39c12)
+      .setTitle("🔍 Vérification requise")
+      .setDescription(
+        `<@${targetId}>, une vérification supplémentaire est requise avant de valider votre accès au casino.\n\n` +
+        `Merci de fournir une preuve d'identité ou toute information demandée par l'IRF dans ce ticket.`
+      )
+      .setFooter({ text: `Demandé par ${interaction.user.username} (IRF)` })
+      .setTimestamp();
+
+    // Garder les boutons actifs (juste defer update pour ne pas désactiver)
+    await interaction.deferUpdate();
+    await interaction.channel.send({
+      content: `<@${targetId}> <@&${FONDATION_ROLE_ID}>`,
+      embeds: [verifyEmbed],
+    });
+    return true;
+  }
+
+  // --- IRF : refuser accès casino ---
+  if (interaction.isButton() && interaction.customId.startsWith(ACCESS_REFUSE_PREFIX)) {
+    if (!interaction.member?.roles.cache.has(IRF_ROLE_ID)) {
+      await interaction.reply({ content: "❌ Accès réservé au rôle IRF.", ephemeral: true });
+      return true;
+    }
+    const targetId = interaction.customId.slice(ACCESS_REFUSE_PREFIX.length);
+
+    const refusEmbed = new EmbedBuilder()
+      .setColor(0xe74c3c)
+      .setTitle("❌ Accès casino refusé")
+      .setDescription(`La demande de <@${targetId}> a été **refusée** par <@${interaction.user.id}>.`)
+      .setTimestamp();
+
+    await interaction.update({ embeds: [refusEmbed], components: [] });
+
+    const user = await client.users.fetch(targetId).catch(() => null);
+    if (user) {
+      await user.send("❌ Votre demande d'accès au casino a été **refusée** par l'IRF.").catch(() => null);
+    }
+
+    setTimeout(() => interaction.channel?.delete().catch(() => null), 5000);
+    return true;
+  }
+
+  if (interaction.isButton()) {
+    // Vérification accès pour les jeux
+    const gameButtons = [BTN.BLACKJACK, BTN.ROULETTE, BTN.SLOTS, BTN.DUEL];
+    if (gameButtons.includes(interaction.customId) || interaction.customId.startsWith(SLOT_SPINS_PREFIX)) {
+      if (!hasCasinoAccess(interaction.member)) {
+        await interaction.reply({
+          content: "🎟️ Vous n'avez pas encore accès au casino. Cliquez sur **Demander l'accès au casino** pour soumettre votre dossier à l'IRF.",
+          ephemeral: true,
+        });
+        return true;
+      }
+    }
   }
 
   if (interaction.isButton()) {
