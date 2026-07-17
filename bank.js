@@ -539,7 +539,7 @@ async function handleBankInteraction(interaction, client) {
     const user = await client.users.fetch(request.userId).catch(() => null);
     if (user) {
       await user
-        .send(`✅ Votre dépôt de **${formatEuro(gross)}** a été validé — **${formatEuro(net)}** crédités sur votre compte \`/bank\`.`)
+        .send(`✅ Votre dépôt de **${formatEuro(gross)}** a été validé et crédité sur votre compte \`/bank\`.`)
         .catch(() => null);
     }
 
@@ -583,11 +583,27 @@ async function handleBankInteraction(interaction, client) {
         { name: "Membre", value: `<@${request.userId}>`, inline: true },
         { name: "Refusé par", value: `${interaction.user}`, inline: true },
         { name: "Montant", value: formatEuro(request.amount), inline: true },
-        { name: "Motif", value: request.motif || "—" }
       )
       .setTimestamp();
 
     await interaction.update({ content: "", embeds: [embed], components: [] });
+
+    // Log dans le salon de transactions
+    const logChanRefuse = await client.channels.fetch(TRANSACTION_LOG_CHANNEL_ID).catch(() => null);
+    if (logChanRefuse?.isTextBased()) {
+      await logChanRefuse.send({
+        embeds: [new EmbedBuilder()
+          .setColor(0xe74c3c)
+          .setTitle("❌ Dépôt refusé")
+          .addFields(
+            { name: "Membre", value: `<@${request.userId}>`, inline: true },
+            { name: "Refusé par", value: `<@${interaction.user.id}>`, inline: true },
+            { name: "Montant demandé", value: formatEuro(request.amount), inline: true },
+          )
+          .setTimestamp()
+        ]
+      }).catch(() => null);
+    }
 
     const user = await client.users.fetch(request.userId).catch(() => null);
     if (user) {
