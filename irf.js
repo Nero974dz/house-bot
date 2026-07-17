@@ -103,7 +103,6 @@ function buildIrfPanelEmbed() {
       "**🔓 Dégeler** — Débloquer un compte\n" +
       "**📋 Transactions** — Historique d'un membre\n" +
       "**💸 Amende** — Infliger une amende financière\n" +
-      "**🤝 Aide** — Attribuer une aide financière\n" +
       "**🏛️ Trésorerie** — Taxes & flux casino"
     )
     .setFooter({ text: "Accès réservé au rôle IRF" })
@@ -120,7 +119,6 @@ function buildIrfPanelComponents() {
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(BTN_TRANSACTIONS).setLabel("Transactions").setEmoji("📋").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(BTN_AMENDE).setLabel("Amende").setEmoji("💸").setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId(BTN_AIDE).setLabel("Aide financière").setEmoji("🤝").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(BTN_TRESORERIE).setLabel("Trésorerie").setEmoji("🏛️").setStyle(ButtonStyle.Secondary),
     ),
   ];
