@@ -29,9 +29,11 @@
     "dep_1784262341250": {
       "userId": "1363979726418608148",
       "amount": 10,
-      "status": "sent",
+      "status": "accepted",
       "createdAt": 1784262341251,
-      "sentAt": 1784262347833
+      "sentAt": 1784262347833,
+      "validatedAt": 1784262381952,
+      "validatorId": "1363979726418608148"
     }
   },
   "frozenAccounts": {}
