@@ -23,6 +23,10 @@
     {
       "text": "[🏠 Airbnb] Nouveau système locatif : ajout/modification/suppression de logements, réservations avec débit automatique, check-in/check-out, caution, calendrier et revenus.",
       "addedAt": 1784268922178
+    },
+    {
+      "text": "[🏠 Airbnb] Taxe de séjour 5% automatiquement déclarée à l'IRF sur chaque location.",
+      "addedAt": 1784268930195
     }
   ],
   "history": [
