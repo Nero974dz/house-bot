@@ -60,6 +60,12 @@
       "status": "sent",
       "createdAt": 1784306234377,
       "sentAt": 1784306242671
+    },
+    "dep_1784306797566": {
+      "userId": "1390507432555581583",
+      "amount": 5000,
+      "status": "pending",
+      "createdAt": 1784306797566
     }
   },
   "frozenAccounts": {}
