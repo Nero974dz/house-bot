@@ -56,20 +56,8 @@ function loadState() {
 }
 
 function saveState(state) {
-  // Garde-fou : ne jamais sauvegarder un état vide (évite d'écraser les vraies données après un pull raté)
-  if (!state.balances || Object.keys(state.balances).length === 0) {
-    const existing = loadStateRaw();
-    if (existing && Object.keys(existing.balances || {}).length > 0) {
-      console.warn("[bank] saveState bloqué : tentative d'écriture d'un état vide alors que des données existent.");
-      return;
-    }
-  }
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   persistState("bank-state.json");
-}
-
-function loadStateRaw() {
-  try { return JSON.parse(fs.readFileSync(STATE_FILE, "utf8")); } catch { return null; }
 }
 
 function round2(n) {
@@ -145,9 +133,9 @@ function getTreasuryBalance() {
 
 function getBalance(userId) {
   const state = loadState();
-  const balance = ensureAccount(state, userId);
-  saveState(state);
-  return balance;
+  // Lecture seule : si le compte n'existe pas, retourner DEFAULT_BALANCE sans sauvegarder
+  if (typeof state.balances[userId] === "number") return state.balances[userId];
+  return DEFAULT_BALANCE;
 }
 
 function isAccountFrozen(userId) {
