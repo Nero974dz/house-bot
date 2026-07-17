@@ -84,7 +84,7 @@ const { setupAirbnbPanel, handleAirbnbInteraction } = require("./airbnb");
 const { setupElectionPanel, handleElectionInteraction } = require("./election");
 const { handleParisInteraction } = require("./paris");
 const { handleSend1Interaction } = require("./send1");
-const { handleCasinoInteraction } = require("./casino");
+const { handleCasinoInteraction, setupCasinoPanel } = require("./casino");
 const { handleLicenseInteraction } = require("./license");
 const { setupReopeningAnnouncement } = require("./annonce");
 
@@ -751,6 +751,7 @@ client.once("ready", async () => {
   await setupCreditTable(client).catch(() => null);
   await setupMissionPanel(client).catch(() => null);
   await setupReopeningAnnouncement(client).catch(() => null);
+  await setupCasinoPanel(client).catch((err) => console.error("❌ Erreur panel Casino:", err.message));
   await setupIrfPanel(client).catch((err) => console.error("❌ Erreur panel IRF:", err.message));
   await setupAirbnbPanel(client).catch((err) => console.error("❌ Erreur panel Airbnb:", err.message));
   await setupElectionPanel(client).catch((err) => console.error("❌ Erreur panel Élection:", err.message));
@@ -765,6 +766,7 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  try {
   if (await handleIrfInteraction(interaction, client)) return;
   if (await handleAirbnbInteraction(interaction, client)) return;
   if (await handleElectionInteraction(interaction, client)) return;
@@ -937,6 +939,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
         console.error("Erreur fermeture ticket:", err.message);
       }
     }, 3000);
+  }
+  } catch (err) {
+    console.error("Erreur interaction non gérée:", err);
+    try {
+      const msg = { content: "❌ Une erreur est survenue. Réessayez.", ephemeral: true };
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply(msg).catch(() => null);
+      } else {
+        await interaction.reply(msg).catch(() => null);
+      }
+    } catch {}
   }
 });
 
