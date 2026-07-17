@@ -292,6 +292,19 @@ async function handleBankInteraction(interaction, client) {
     addFunds(target.id, net);
     collectTax(tax, "virement", interaction.user.id);
 
+    // Log IRF pour les deux parties
+    try {
+      let irfState = { messageId: null, transactions: [] };
+      try { irfState = JSON.parse(fs.readFileSync(IRF_STATE_FILE, "utf8")); } catch {}
+      irfState.transactions = [
+        { userId: interaction.user.id, type: "🔁 Virement envoyé", game: `vers <@${target.id}>`, amount: -gross, byId: interaction.user.id, at: Date.now() },
+        { userId: target.id, type: "🔁 Virement reçu", game: `de <@${interaction.user.id}>`, amount: net, byId: interaction.user.id, at: Date.now() },
+        ...irfState.transactions,
+      ].slice(0, 500);
+      fs.writeFileSync(IRF_STATE_FILE, JSON.stringify(irfState, null, 2));
+      persistState("irf-state.json");
+    } catch {}
+
     await logTransaction(client, {
       type: "🔁 Virement (/virement)",
       from: interaction.user.id,
