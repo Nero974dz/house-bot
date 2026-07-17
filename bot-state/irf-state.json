@@ -4,6 +4,13 @@
     {
       "userId": "320348102055690241",
       "type": "💸 Amende (Fraude échelon 1 ( Transaction Illégal ))",
+      "amount": -100,
+      "byId": "1390508824846139453",
+      "at": 1784320804097
+    },
+    {
+      "userId": "320348102055690241",
+      "type": "💸 Amende (Fraude échelon 1 ( Transaction Illégal ))",
       "amount": -400,
       "byId": "1390508824846139453",
       "at": 1784320786765
@@ -1781,15 +1788,6 @@
       "game": "Roulette",
       "stake": 50,
       "amount": 50
-    },
-    {
-      "byId": "casino",
-      "at": 1784312397145,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Roulette",
-      "stake": 50,
-      "amount": -50
     }
   ]
 }
