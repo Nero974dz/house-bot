@@ -2,6 +2,14 @@
   "messageId": "1527540905911914617",
   "transactions": [
     {
+      "userId": "1509969106999443678",
+      "type": "🏛️ Argent Taxe",
+      "game": "",
+      "amount": 1000,
+      "byId": "system",
+      "at": 1784307003658
+    },
+    {
       "userId": "1390507432555581583",
       "type": "💳 Dépôt Validé",
       "game": "brut 5 000,00 €",
