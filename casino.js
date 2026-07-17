@@ -89,12 +89,51 @@ const DUEL_ACCEPT_PREFIX = "casino_duel_accept_";
 const DUEL_DECLINE_PREFIX = "casino_duel_decline_";
 const RPS_PREFIX = "casino_rps_"; // + duelId:choix
 const C4_PREFIX = "casino_c4_"; // + duelId:colonne
+const BJ1V1_HIT_PREFIX = "casino_bj1_hit_"; // + duelId
+const BJ1V1_STAND_PREFIX = "casino_bj1_stand_"; // + duelId
+const SCRABBLE_WORD_PREFIX = "casino_scrab_"; // + duelId (ouvre la modale)
+const MODAL_SCRABBLE_PREFIX = "casino_modal_scrab_"; // + duelId
 
 const GAME_NAMES = {
   coinflip: "Pile ou face",
   rps: "Pierre-Feuille-Ciseaux",
   c4: "Puissance 4",
+  bj1v1: "Blackjack 1v1",
+  scrabble: "Scrabble (meilleur mot)",
 };
+
+// Valeurs des lettres au Scrabble (français)
+const SCRABBLE_VALUES = {
+  A: 1, B: 3, C: 3, D: 2, E: 1, F: 4, G: 2, H: 4, I: 1, J: 8, K: 10, L: 1,
+  M: 2, N: 1, O: 1, P: 3, Q: 8, R: 1, S: 1, T: 1, U: 1, V: 4, W: 10, X: 10,
+  Y: 10, Z: 10,
+};
+// Tirage pondéré des lettres (fréquences proches du vrai Scrabble français)
+const SCRABBLE_BAG =
+  "AAAAAAAAAEEEEEEEEEEEEEEEIIIIIIIINNNNNNOOOOOORRRRRRSSSSSSTTTTTTUUUUUULLLLLDDDMMMGGBBCCPPFFHHVVJKQWXYZ";
+
+function drawScrabbleLetters(n = 7) {
+  const letters = [];
+  for (let i = 0; i < n; i++) {
+    letters.push(SCRABBLE_BAG[Math.floor(Math.random() * SCRABBLE_BAG.length)]);
+  }
+  return letters;
+}
+
+/** Vérifie qu'un mot n'utilise que les lettres disponibles (avec doublons). */
+function canFormWord(word, rack) {
+  const avail = {};
+  for (const l of rack) avail[l] = (avail[l] || 0) + 1;
+  for (const l of word) {
+    if (!avail[l]) return false;
+    avail[l]--;
+  }
+  return true;
+}
+
+function scrabbleScore(word) {
+  return [...word].reduce((s, l) => s + (SCRABBLE_VALUES[l] || 0), 0);
+}
 
 const RPS_EMOJI = { pierre: "🪨", feuille: "📄", ciseaux: "✂️" };
 function rpsBeats(a, b) {
@@ -414,7 +453,7 @@ function buildBlackjackEmbed({ player, dealer, amount, hideDealer, status, resul
     .setTimestamp();
 
   if (resultLine) embed.setDescription(resultLine);
-  if (IMAGES.blackjack) embed.setImage(IMAGES.blackjack);
+  if (IMAGES.blackjack) embed.setThumbnail(IMAGES.blackjack);
   return embed;
 }
 
@@ -864,6 +903,16 @@ function buildGameSelectRow(opponentId) {
       .setCustomId(`${DUEL_GAME_PREFIX}c4:${opponentId}`)
       .setLabel("Puissance 4")
       .setEmoji("🔴")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${DUEL_GAME_PREFIX}bj1v1:${opponentId}`)
+      .setLabel("Blackjack")
+      .setEmoji("🃏")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${DUEL_GAME_PREFIX}scrabble:${opponentId}`)
+      .setLabel("Scrabble")
+      .setEmoji("🔡")
       .setStyle(ButtonStyle.Secondary)
   );
 }
@@ -983,6 +1032,66 @@ function buildDuelRow(duelId, disabled = false) {
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(disabled)
   );
+}
+
+// --- Blackjack 1v1 ---
+function buildBj1v1Embed(duel, reveal = false) {
+  const cId = duel.challengerId;
+  const oId = duel.opponentId;
+  const cHand = duel.bjHands[cId];
+  const oHand = duel.bjHands[oId];
+
+  const handText = (hand, id) => {
+    const stood = duel.bjStood?.[id];
+    const busted = handTotal(hand) > 21;
+    const showTotal = reveal || stood || busted;
+    return showTotal
+      ? `${formatHand(hand)} = **${handTotal(hand)}**${busted ? " 💥" : stood ? " ✋" : ""}`
+      : `${formatHand(hand)} = **${handTotal(hand)}**`;
+  };
+
+  return new EmbedBuilder()
+    .setColor(reveal ? 0x2ecc71 : 0x2c3e50)
+    .setTitle("🃏 Blackjack 1v1")
+    .setDescription(
+      `Mise : **${formatEuro(duel.amount)}** chacun\n\n` +
+        (reveal ? "" : `🎯 Au tour de <@${duel.turn}>\n\n`) +
+        `<@${cId}> : ${handText(cHand, cId)}\n` +
+        `<@${oId}> : ${handText(oHand, oId)}`
+    )
+    .setTimestamp();
+}
+
+function buildBj1v1Row(duelId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${BJ1V1_HIT_PREFIX}${duelId}`)
+      .setLabel("Tirer")
+      .setEmoji("➕")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`${BJ1V1_STAND_PREFIX}${duelId}`)
+      .setLabel("Rester")
+      .setEmoji("✋")
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+/** Détermine le gagnant d'un blackjack 1v1 (null = égalité). */
+function bj1v1Winner(duel) {
+  const cId = duel.challengerId;
+  const oId = duel.opponentId;
+  const cTotal = handTotal(duel.bjHands[cId]);
+  const oTotal = handTotal(duel.bjHands[oId]);
+  const cBust = cTotal > 21;
+  const oBust = oTotal > 21;
+
+  if (cBust && oBust) return null;
+  if (cBust) return oId;
+  if (oBust) return cId;
+  if (cTotal > oTotal) return cId;
+  if (oTotal > cTotal) return oId;
+  return null;
 }
 
 async function handleCasinoInteraction(interaction, client) {
@@ -1230,6 +1339,59 @@ async function handleCasinoInteraction(interaction, client) {
         return true;
       }
 
+      if (game === "bj1v1") {
+        const deck = buildDeck();
+        duel.bjDeck = deck;
+        duel.bjHands = {
+          [duel.challengerId]: [deck.pop(), deck.pop()],
+          [duel.opponentId]: [deck.pop(), deck.pop()],
+        };
+        duel.bjStood = {};
+        duel.turn = duel.challengerId; // le défieur joue d'abord
+        saveDuel(duel);
+
+        await interaction.update({
+          content: `<@${duel.turn}>`,
+          embeds: [buildBj1v1Embed(duel)],
+          components: [buildBj1v1Row(duel.id)],
+        });
+        return true;
+      }
+
+      if (game === "scrabble") {
+        duel.racks = {
+          [duel.challengerId]: drawScrabbleLetters(7),
+          [duel.opponentId]: drawScrabbleLetters(7),
+        };
+        duel.words = {};
+        saveDuel(duel);
+
+        const embed = new EmbedBuilder()
+          .setColor(0x1abc9c)
+          .setTitle("🔡 Scrabble — Meilleur mot")
+          .setDescription(
+            `<@${duel.challengerId}> 🆚 <@${duel.opponentId}> — **${formatEuro(duel.amount)}**\n\n` +
+              "Chaque joueur clique sur le bouton pour voir **ses lettres** et proposer **le mot le plus cher**.\n" +
+              "Vous devez utiliser uniquement vos lettres. Le plus haut score gagne !"
+          )
+          .setTimestamp();
+
+        await interaction.update({
+          content: `<@${duel.challengerId}> <@${duel.opponentId}>`,
+          embeds: [embed],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`${SCRABBLE_WORD_PREFIX}${duel.id}`)
+                .setLabel("Voir mes lettres & jouer")
+                .setEmoji("🔡")
+                .setStyle(ButtonStyle.Primary)
+            ),
+          ],
+        });
+        return true;
+      }
+
       return true;
     }
 
@@ -1419,6 +1581,115 @@ async function handleCasinoInteraction(interaction, client) {
       });
       return true;
     }
+
+    // Coups de Blackjack 1v1
+    if (
+      interaction.customId.startsWith(BJ1V1_HIT_PREFIX) ||
+      interaction.customId.startsWith(BJ1V1_STAND_PREFIX)
+    ) {
+      const isHit = interaction.customId.startsWith(BJ1V1_HIT_PREFIX);
+      const prefix = isHit ? BJ1V1_HIT_PREFIX : BJ1V1_STAND_PREFIX;
+      const duelId = interaction.customId.slice(prefix.length);
+      const state = loadState();
+      const duel = state.duels.find((d) => d.id === duelId);
+
+      if (!duel || duel.status !== "playing" || duel.game !== "bj1v1") {
+        await interaction.reply({ content: "❌ Ce défi n'est plus actif.", ephemeral: true });
+        return true;
+      }
+      if (interaction.user.id !== duel.challengerId && interaction.user.id !== duel.opponentId) {
+        await interaction.reply({ content: "❌ Vous ne participez pas à ce défi.", ephemeral: true });
+        return true;
+      }
+      if (interaction.user.id !== duel.turn) {
+        await interaction.reply({ content: "⏳ Ce n'est pas votre tour.", ephemeral: true });
+        return true;
+      }
+
+      const uid = interaction.user.id;
+      let turnEnds = false;
+
+      if (isHit) {
+        duel.bjHands[uid].push(duel.bjDeck.pop());
+        if (handTotal(duel.bjHands[uid]) >= 21) turnEnds = true; // 21 ou bust → tour fini
+      } else {
+        duel.bjStood[uid] = true;
+        turnEnds = true;
+      }
+
+      // Fin du tour → on passe à l'autre, ou on résout si les deux ont fini
+      const other = uid === duel.challengerId ? duel.opponentId : duel.challengerId;
+      const uidDone = duel.bjStood[uid] || handTotal(duel.bjHands[uid]) >= 21;
+      const otherDone = duel.bjStood[other] || handTotal(duel.bjHands[other]) >= 21;
+
+      if (uidDone && otherDone) {
+        const winnerId = bj1v1Winner(duel);
+        const cId = duel.challengerId;
+        const oId = duel.opponentId;
+        const payout = await finishDuel(client, duel, winnerId);
+        const embed = buildBj1v1Embed(duel, true).setTitle("🃏 Blackjack 1v1 — Résultat");
+        embed.setDescription(
+          `${embed.data.description}\n\n` +
+            (winnerId
+              ? `🏆 <@${winnerId}> remporte **${formatEuro(payout)}** !`
+              : "🤝 Égalité — mises remboursées.") +
+            duelBalanceLine(cId, oId)
+        );
+        await interaction.update({ content: "", embeds: [embed], components: [] });
+        return true;
+      }
+
+      if (turnEnds) {
+        duel.turn = other;
+      }
+      saveDuel(duel);
+
+      await interaction.update({
+        content: `<@${duel.turn}>`,
+        embeds: [buildBj1v1Embed(duel)],
+        components: [buildBj1v1Row(duel.id)],
+      });
+      return true;
+    }
+
+    // Scrabble : ouvrir la modale de saisie du mot
+    if (interaction.customId.startsWith(SCRABBLE_WORD_PREFIX)) {
+      const duelId = interaction.customId.slice(SCRABBLE_WORD_PREFIX.length);
+      const state = loadState();
+      const duel = state.duels.find((d) => d.id === duelId);
+
+      if (!duel || duel.status !== "playing" || duel.game !== "scrabble") {
+        await interaction.reply({ content: "❌ Ce défi n'est plus actif.", ephemeral: true });
+        return true;
+      }
+      if (interaction.user.id !== duel.challengerId && interaction.user.id !== duel.opponentId) {
+        await interaction.reply({ content: "❌ Vous ne participez pas à ce défi.", ephemeral: true });
+        return true;
+      }
+      if (duel.words?.[interaction.user.id]) {
+        await interaction.reply({ content: "❌ Vous avez déjà proposé votre mot.", ephemeral: true });
+        return true;
+      }
+
+      const rack = duel.racks[interaction.user.id].join(" ");
+      await interaction.showModal(
+        new ModalBuilder()
+          .setCustomId(`${MODAL_SCRABBLE_PREFIX}${duelId}`)
+          .setTitle("🔡 Votre mot")
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId("mot")
+                .setLabel(`Vos lettres : ${rack}`.slice(0, 45))
+                .setPlaceholder("Le mot le plus cher possible")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true)
+                .setMaxLength(15)
+            )
+          )
+      );
+      return true;
+    }
   }
 
   if (interaction.isUserSelectMenu() && interaction.customId === SELECT_DUEL_OPPONENT) {
@@ -1481,6 +1752,72 @@ async function handleCasinoInteraction(interaction, client) {
       }
       await interaction.deferReply({ ephemeral: true });
       await playRoulette(interaction, client, color, amount);
+      return true;
+    }
+
+    if (interaction.customId.startsWith(MODAL_SCRABBLE_PREFIX)) {
+      const duelId = interaction.customId.slice(MODAL_SCRABBLE_PREFIX.length);
+      const state = loadState();
+      const duel = state.duels.find((d) => d.id === duelId);
+
+      if (!duel || duel.status !== "playing" || duel.game !== "scrabble") {
+        await interaction.reply({ content: "❌ Ce défi n'est plus actif.", ephemeral: true });
+        return true;
+      }
+
+      const uid = interaction.user.id;
+      const raw = interaction.fields.getTextInputValue("mot").toUpperCase().replace(/[^A-Z]/g, "");
+      const rack = duel.racks[uid];
+
+      if (!raw || raw.length < 2) {
+        await interaction.reply({ content: "❌ Mot trop court (2 lettres minimum).", ephemeral: true });
+        return true;
+      }
+      if (!canFormWord(raw, rack)) {
+        await interaction.reply({
+          content: `❌ Vous ne pouvez utiliser que vos lettres : **${rack.join(" ")}**`,
+          ephemeral: true,
+        });
+        return true;
+      }
+
+      duel.words = duel.words || {};
+      duel.words[uid] = { word: raw, score: scrabbleScore(raw) };
+      saveDuel(duel);
+
+      await interaction.reply({
+        content: `✅ Mot enregistré : **${raw}** (${scrabbleScore(raw)} points). En attente de l'adversaire…`,
+        ephemeral: true,
+      });
+
+      const cId = duel.challengerId;
+      const oId = duel.opponentId;
+      const cWord = duel.words[cId];
+      const oWord = duel.words[oId];
+      if (!cWord || !oWord) return true; // on attend l'autre
+
+      let winnerId = null;
+      if (cWord.score > oWord.score) winnerId = cId;
+      else if (oWord.score > cWord.score) winnerId = oId;
+
+      const payout = await finishDuel(client, duel, winnerId);
+      const resultEmbed = new EmbedBuilder()
+        .setColor(0x2ecc71)
+        .setTitle("🔡 Scrabble — Résultat")
+        .setDescription(
+          `<@${cId}> : **${cWord.word}** (${cWord.score} pts)\n` +
+            `<@${oId}> : **${oWord.word}** (${oWord.score} pts)\n\n` +
+            (winnerId
+              ? `🏆 <@${winnerId}> remporte **${formatEuro(payout)}** !`
+              : "🤝 Égalité — mises remboursées.") +
+            duelBalanceLine(cId, oId)
+        )
+        .setTimestamp();
+
+      const channel = await interaction.guild.channels.fetch(DUEL_CHANNEL_ID).catch(() => null);
+      if (channel?.isTextBased()) {
+        await channel.send({ content: `<@${cId}> <@${oId}>`, embeds: [resultEmbed] });
+      }
       return true;
     }
 
