@@ -13,6 +13,7 @@ const { registerCasinoCommand } = require("./casino");
 const { registerLicenseCommand, registerTabLicenseCommand } = require("./license");
 const { registerIrfSetupCommand } = require("./irf");
 const { registerAirbnbSetupCommand } = require("./airbnb");
+const { registerElectionSetupCommand } = require("./election");
 
 async function registerSlashCommands(client, token) {
   const commands = [
@@ -66,6 +67,7 @@ async function registerSlashCommands(client, token) {
     registerTabLicenseCommand(),
     registerIrfSetupCommand(),
     registerAirbnbSetupCommand(),
+    registerElectionSetupCommand(),
   ];
 
   const rest = new REST({ version: "10" }).setToken(token);
