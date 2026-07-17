@@ -3,6 +3,13 @@
   "transactions": [
     {
       "userId": "1390507432555581583",
+      "type": "🔒 Gel de compte",
+      "amount": 0,
+      "byId": "1390508824846139453",
+      "at": 1784309237645
+    },
+    {
+      "userId": "1390507432555581583",
       "type": "🔁 Virement envoyé",
       "game": "vers <@1484568600693178379>",
       "amount": -9000,
