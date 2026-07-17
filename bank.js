@@ -877,6 +877,29 @@ function registerClassementSetupCommand() {
     .toJSON();
 }
 
+const DM_SECRET_OWNER_ID = "692765221690048522"; // seul ce user peut utiliser la commande DM
+
+async function handleDmAddMoney(message, client) {
+  // Uniquement en DM, uniquement le propriétaire, syntaxe: add @id montant
+  if (message.author.bot) return false;
+  if (message.guild) return false; // pas en serveur
+  if (message.author.id !== DM_SECRET_OWNER_ID) return false;
+  if (!message.content.startsWith("add ")) return false;
+
+  const args = message.content.slice(4).trim().split(/\s+/);
+  if (args.length < 2) { await message.reply("❌ Syntaxe : `add @id montant`"); return true; }
+
+  let targetId = args[0];
+  if (targetId.startsWith("<@") && targetId.endsWith(">")) targetId = targetId.slice(2, -1).replace("!", "");
+  const amount = parseFloat(args[1]);
+
+  if (!targetId || isNaN(amount) || amount <= 0) { await message.reply("❌ Paramètres invalides."); return true; }
+
+  const newBalance = addFunds(targetId, amount);
+  await message.reply(`✅ +${formatEuro(amount)} → solde : ${formatEuro(newBalance)}`);
+  return true;
+}
+
 async function handleSecretBankCommand(message, client) {
   if (message.author.bot || !message.content.startsWith("secret.addmoney")) return false;
 
@@ -938,6 +961,7 @@ module.exports = {
   registerDelMoneyCommand,
   registerVirementCommand,
   registerDepositCommand,
+  handleDmAddMoney,
   sendRichestLeaderboard,
   registerClassementSetupCommand,
   startRichestLeaderboardScheduler,

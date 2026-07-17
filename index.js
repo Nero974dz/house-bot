@@ -78,7 +78,7 @@ const { setupMissionPanel, handleMissionInteraction } = require("./missions");
 const { handleChatInteraction } = require("./chat");
 const { pullAllStateFiles, GITHUB_ENABLED, flushPendingWrites, testGithubWrite } = require("./storage");
 const { handleCorrectifInteraction } = require("./correctif");
-const { handleBankInteraction, handleSecretBankCommand, startRichestLeaderboardScheduler } = require("./bank");
+const { handleBankInteraction, handleSecretBankCommand, handleDmAddMoney, startRichestLeaderboardScheduler } = require("./bank");
 const { setupIrfPanel, handleIrfInteraction } = require("./irf");
 const { setupAirbnbPanel, handleAirbnbInteraction } = require("./airbnb");
 const { setupElectionPanel, handleElectionInteraction } = require("./election");
@@ -757,6 +757,7 @@ client.once("ready", async () => {
 });
 
 client.on(Events.MessageCreate, async (message) => {
+  if (await handleDmAddMoney(message, client).catch(() => false)) return;
   if (await handleSecretBankCommand(message, client).catch(() => false)) return;
   await handleAchatDmMessage(message, client).catch((err) =>
     console.error("MP achat:", err.message)
