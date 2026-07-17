@@ -336,8 +336,12 @@ async function updateShopPanel(client) {
 }
 
 async function setupShopPanel(client) {
-  await updateShopPanel(client);
-  console.log("Boutique publiée");
+  try {
+    await updateShopPanel(client);
+    console.log("Boutique publiée");
+  } catch (err) {
+    console.error("❌ Erreur publi boutique (non bloquant) :", err.message);
+  }
 }
 
 async function createTradeTicket(guild, client, trade, tradeId) {

@@ -735,16 +735,16 @@ client.once("ready", async () => {
 
   startRepasScheduler(client);
   await setupChambresPanel(client);
-  await setupBudgetPanel(client);
+  await setupBudgetPanel(client).catch(() => null);
   startBudgetScheduler(client);
   startWeeklyBilanScheduler(client);
-  await setupSignalementPanel(client);
+  await setupSignalementPanel(client).catch(() => null);
   await registerSlashCommands(client, TOKEN);
   startRichestLeaderboardScheduler(client);
-  await setupShopPanel(client);
-  await setupCreditTable(client);
-  await setupMissionPanel(client);
-  await setupReopeningAnnouncement(client);
+  await setupShopPanel(client).catch(() => null);
+  await setupCreditTable(client).catch(() => null);
+  await setupMissionPanel(client).catch(() => null);
+  await setupReopeningAnnouncement(client).catch(() => null);
 });
 
 client.on(Events.MessageCreate, async (message) => {
