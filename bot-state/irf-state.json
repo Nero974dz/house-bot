@@ -2,6 +2,13 @@
   "messageId": "1527540905911914617",
   "transactions": [
     {
+      "userId": "1459602308168945705",
+      "type": "💸 Amende (Fraude échelon 1 ( Transaction Illégal ))",
+      "amount": -1000,
+      "byId": "1390508824846139453",
+      "at": 1784320761010
+    },
+    {
       "byId": "casino",
       "at": 1784320688689,
       "userId": "1411724649036910673",
@@ -1785,177 +1792,6 @@
       "game": "Roulette",
       "stake": 100,
       "amount": -100
-    },
-    {
-      "byId": "casino",
-      "at": 1784312323100,
-      "userId": "1411724649036910673",
-      "type": "🏆 Victoire Casino",
-      "game": "Roulette",
-      "stake": 50,
-      "amount": 50
-    },
-    {
-      "byId": "casino",
-      "at": 1784312312947,
-      "userId": "1411724649036910673",
-      "type": "🏆 Victoire Casino",
-      "game": "Roulette",
-      "stake": 100,
-      "amount": 100
-    },
-    {
-      "byId": "casino",
-      "at": 1784312301936,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Roulette",
-      "stake": 50,
-      "amount": -50
-    },
-    {
-      "byId": "casino",
-      "at": 1784312288379,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Roulette",
-      "stake": 100,
-      "amount": -100
-    },
-    {
-      "byId": "casino",
-      "at": 1784312279098,
-      "userId": "1411724649036910673",
-      "type": "🏆 Victoire Casino",
-      "game": "Roulette",
-      "stake": 50,
-      "amount": 50
-    },
-    {
-      "byId": "casino",
-      "at": 1784312132738,
-      "userId": "1411724649036910673",
-      "type": "🏆 Victoire Casino",
-      "game": "Roulette",
-      "stake": 50,
-      "amount": 50
-    },
-    {
-      "byId": "casino",
-      "at": 1784312108528,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Machine à sous",
-      "stake": 100,
-      "amount": -40
-    },
-    {
-      "byId": "casino",
-      "at": 1784312094746,
-      "userId": "1411724649036910673",
-      "type": "🏆 Victoire Casino",
-      "game": "Machine à sous",
-      "stake": 10,
-      "amount": 0
-    },
-    {
-      "byId": "casino",
-      "at": 1784312085180,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Machine à sous",
-      "stake": 10,
-      "amount": -1
-    },
-    {
-      "byId": "casino",
-      "at": 1784312077328,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Machine à sous",
-      "stake": 10,
-      "amount": -7
-    },
-    {
-      "byId": "casino",
-      "at": 1784312069248,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Machine à sous",
-      "stake": 100,
-      "amount": -70
-    },
-    {
-      "byId": "casino",
-      "at": 1784312061037,
-      "userId": "1411724649036910673",
-      "type": "🏆 Victoire Casino",
-      "game": "Machine à sous",
-      "stake": 100,
-      "amount": 10
-    },
-    {
-      "byId": "casino",
-      "at": 1784312049197,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Machine à sous",
-      "stake": 100,
-      "amount": -40
-    },
-    {
-      "byId": "casino",
-      "at": 1784312038053,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Machine à sous",
-      "stake": 100,
-      "amount": -60
-    },
-    {
-      "byId": "casino",
-      "at": 1784312025048,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Machine à sous",
-      "stake": 100,
-      "amount": -35
-    },
-    {
-      "byId": "casino",
-      "at": 1784312015882,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Machine à sous",
-      "stake": 100,
-      "amount": -40
-    },
-    {
-      "byId": "casino",
-      "at": 1784311998385,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Machine à sous",
-      "stake": 10,
-      "amount": -0.5
-    },
-    {
-      "byId": "casino",
-      "at": 1784311968173,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Roulette",
-      "stake": 50,
-      "amount": -50
-    },
-    {
-      "byId": "casino",
-      "at": 1784311950881,
-      "userId": "1411724649036910673",
-      "type": "🏆 Victoire Casino",
-      "game": "Roulette",
-      "stake": 200,
-      "amount": 200
     }
   ]
 }
