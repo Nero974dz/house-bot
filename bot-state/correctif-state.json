@@ -1,42 +1,5 @@
 {
-  "unreleased": [
-    {
-      "text": "[🏛️ IRF] Nouveau panel de gestion financière : liste des comptes, gel/dégel, historique des transactions, amendes et vue Trésorerie.",
-      "addedAt": 1784268866733
-    },
-    {
-      "text": "[🏛️ IRF] La Trésorerie affiche un résumé clair : Victoires Casino, Défaites Casino, Argent Taxe, Dépôts validés, Amendes et solde de la Banque de la Maison.",
-      "addedAt": 1784268874554
-    },
-    {
-      "text": "[🏛️ IRF] Les gains/pertes casino, virements et dépôts validés apparaissent désormais dans l'historique IRF de chaque membre.",
-      "addedAt": 1784268882665
-    },
-    {
-      "text": "[🏛️ IRF] Nouveau bouton 🪪 Licences : voir tous les membres ayant acheté leur licence et leur solde.",
-      "addedAt": 1784268889506
-    },
-    {
-      "text": "[🎰 Casino] Accès restreint : soumettre une demande via le bouton Demander l'accès, un agent IRF vérifie votre âge et valide ou refuse.",
-      "addedAt": 1784268910480
-    },
-    {
-      "text": "[🏠 Airbnb] Nouveau système locatif : ajout/modification/suppression de logements, réservations avec débit automatique, check-in/check-out, caution, calendrier et revenus.",
-      "addedAt": 1784268922178
-    },
-    {
-      "text": "[🏠 Airbnb] Taxe de séjour 5% automatiquement déclarée à l'IRF sur chaque location.",
-      "addedAt": 1784268930195
-    },
-    {
-      "text": "[🗳️ Élection] Nouveau système d'élection pour le Délégué des membres : candidatures, vote anonyme, résultats avec photos de profil.",
-      "addedAt": 1784268937179
-    },
-    {
-      "text": "[💳 Dépôt] La commande /deposit crée un ticket privé avec IBAN, puis validation Fondation avant crédit.",
-      "addedAt": 1784268956080
-    }
-  ],
+  "unreleased": [],
   "history": [
     {
       "entries": [
@@ -207,6 +170,50 @@
       ],
       "publishedAt": 1784268590432,
       "publishedBy": "1363979726418608148"
+    },
+    {
+      "entries": [
+        {
+          "text": "[🏛️ IRF] Nouveau panel de gestion financière : liste des comptes, gel/dégel, historique des transactions, amendes et vue Trésorerie.",
+          "addedAt": 1784268866733
+        },
+        {
+          "text": "[🏛️ IRF] La Trésorerie affiche un résumé clair : Victoires Casino, Défaites Casino, Argent Taxe, Dépôts validés, Amendes et solde de la Banque de la Maison.",
+          "addedAt": 1784268874554
+        },
+        {
+          "text": "[🏛️ IRF] Les gains/pertes casino, virements et dépôts validés apparaissent désormais dans l'historique IRF de chaque membre.",
+          "addedAt": 1784268882665
+        },
+        {
+          "text": "[🏛️ IRF] Nouveau bouton 🪪 Licences : voir tous les membres ayant acheté leur licence et leur solde.",
+          "addedAt": 1784268889506
+        },
+        {
+          "text": "[🎰 Casino] Accès restreint : soumettre une demande via le bouton Demander l'accès, un agent IRF vérifie votre âge et valide ou refuse.",
+          "addedAt": 1784268910480
+        },
+        {
+          "text": "[🏠 Airbnb] Nouveau système locatif : ajout/modification/suppression de logements, réservations avec débit automatique, check-in/check-out, caution, calendrier et revenus.",
+          "addedAt": 1784268922178
+        },
+        {
+          "text": "[🏠 Airbnb] Taxe de séjour 5% automatiquement déclarée à l'IRF sur chaque location.",
+          "addedAt": 1784268930195
+        },
+        {
+          "text": "[🗳️ Élection] Nouveau système d'élection pour le Délégué des membres : candidatures, vote anonyme, résultats avec photos de profil.",
+          "addedAt": 1784268937179
+        },
+        {
+          "text": "[💳 Dépôt] La commande /deposit crée un ticket privé avec IBAN, puis validation Fondation avant crédit.",
+          "addedAt": 1784268956080
+        }
+      ],
+      "publishedAt": 1784268961001,
+      "publishedBy": "1363979726418608148",
+      "messageId": "1527559480345366562"
     }
-  ]
+  ],
+  "lastMessageId": "1527559480345366562"
 }
