@@ -24,9 +24,11 @@ const STATE_FILE = getStatePath("airbnb-state.json");
 const BTN_ADD    = "airbnb_add";
 const BTN_LIST   = "airbnb_list";
 const BTN_EDIT   = "airbnb_edit";
+const BTN_DEL    = "airbnb_del";
 const BTN_RESA   = "airbnb_resa";
 const BTN_CAL    = "airbnb_cal";
 const BTN_REVENU = "airbnb_revenu";
+const SELECT_LOG_DEL = "airbnb_sel_log_del";
 
 // Modales
 const MODAL_ADD            = "airbnb_modal_add";
@@ -62,42 +64,45 @@ function saveState(state) {
 // ---------- PANEL ----------
 function buildPanelEmbed(state) {
   const logements = Object.values(state.logements);
-
-  const desc = logements.length === 0
-    ? "*Aucun logement enregistré. Ajoutez-en un avec ➕ !*"
-    : logements.map(l => {
-        const icon = l.statut === "libre" ? "🟢" : l.statut === "loue" ? "🔴" : "🧹";
-        return `${icon} **${l.nom}** — ${formatEuro(l.prixNuit)}/nuit | Caution : ${formatEuro(l.caution)}\n  📍 *${l.adresse}*`;
-      }).join("\n\n");
-
   const libres = logements.filter(l => l.statut === "libre").length;
   const loues  = logements.filter(l => l.statut === "loue").length;
   const menage = logements.filter(l => l.statut === "menage").length;
+  const resas  = Object.values(state.reservations).filter(r => r.statut === "checkin" || r.statut === "confirmee").length;
+
+  const lignes = logements.length === 0
+    ? ["*Aucun logement. Utilisez **Ajouter** pour commencer.*"]
+    : logements.map(l => {
+        const icon = l.statut === "libre" ? "🟢" : l.statut === "loue" ? "🔴" : "🧹";
+        const loc  = l.locataireId ? ` · <@${l.locataireId}>` : "";
+        return `${icon} **${l.nom}**${loc} · ${formatEuro(l.prixNuit)}/nuit`;
+      });
 
   return new EmbedBuilder()
-    .setColor(0xe74c3c)
-    .setTitle("🏠 Agence Airbnb — Panel de gestion")
-    .setDescription(desc)
+    .setColor(0x2c3e50)
+    .setTitle("🏠 Airbnb — Gestion locative")
     .addFields(
-      { name: "🟢 Libres",     value: String(libres), inline: true },
-      { name: "🔴 Loués",      value: String(loues),  inline: true },
-      { name: "🧹 En ménage",  value: String(menage), inline: true },
+      { name: "🟢 Libres",       value: `**${libres}**`, inline: true },
+      { name: "🔴 Loués",        value: `**${loues}**`,  inline: true },
+      { name: "🧹 Ménage",       value: `**${menage}**`, inline: true },
+      { name: "📋 Logements",    value: lignes.join("\n") || "—" },
+      { name: "📅 Réservations actives", value: `**${resas}**`, inline: true },
+      { name: "🏠 Parc total",   value: `**${logements.length}** bien${logements.length > 1 ? "s" : ""}`, inline: true },
     )
-    .setFooter({ text: "🟢 Libre • 🔴 Loué • 🧹 En ménage après check-out" })
     .setTimestamp();
 }
 
 function buildPanelComponents() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(BTN_ADD).setLabel("Ajouter un logement").setEmoji("➕").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(BTN_LIST).setLabel("Détail logements").setEmoji("📋").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(BTN_EDIT).setLabel("Modifier un logement").setEmoji("✏️").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(BTN_ADD).setLabel("Ajouter").setEmoji("➕").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(BTN_EDIT).setLabel("Modifier").setEmoji("✏️").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(BTN_DEL).setLabel("Supprimer").setEmoji("🗑️").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(BTN_LIST).setLabel("Détails").setEmoji("📋").setStyle(ButtonStyle.Secondary),
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(BTN_RESA).setLabel("Nouvelle réservation").setEmoji("📅").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(BTN_CAL).setLabel("Calendrier").setEmoji("📆").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(BTN_REVENU).setLabel("Revenus & taxes").setEmoji("💰").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(BTN_REVENU).setLabel("Revenus").setEmoji("💰").setStyle(ButtonStyle.Secondary),
     ),
   ];
 }
@@ -185,7 +190,7 @@ async function handleAirbnbInteraction(interaction, client) {
       new ModalBuilder().setCustomId(MODAL_ADD).setTitle("➕ Nouveau logement")
         .addComponents(
           new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("nom").setLabel("Nom du logement").setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder("ex: Villa Rose")),
-          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("adresse").setLabel("Adresse RP").setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder("ex: 12 rue des Fleurs")),
+          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("adresse").setLabel("Adresse").setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder("ex: 12 rue des Fleurs")),
           new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("prix").setLabel("Prix par nuit (€)").setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder("ex: 150")),
           new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("caution").setLabel("Caution (€)").setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder("ex: 300")),
         )
@@ -261,7 +266,7 @@ async function handleAirbnbInteraction(interaction, client) {
       new ModalBuilder().setCustomId(`${MODAL_EDIT_PREFIX}${logId}`).setTitle(`✏️ Modifier — ${log.nom}`)
         .addComponents(
           new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("nom").setLabel("Nouveau nom").setStyle(TextInputStyle.Short).setRequired(true).setValue(log.nom)),
-          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("adresse").setLabel("Nouvelle adresse RP").setStyle(TextInputStyle.Short).setRequired(true).setValue(log.adresse)),
+          new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("adresse").setLabel("Nouvelle adresse").setStyle(TextInputStyle.Short).setRequired(true).setValue(log.adresse)),
           new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("prix").setLabel("Nouveau prix/nuit (€)").setStyle(TextInputStyle.Short).setRequired(true).setValue(String(log.prixNuit))),
           new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId("caution").setLabel("Nouvelle caution (€)").setStyle(TextInputStyle.Short).setRequired(true).setValue(String(log.caution))),
         )
@@ -283,6 +288,43 @@ async function handleAirbnbInteraction(interaction, client) {
     saveState(state);
     await updatePanel(client);
     await interaction.reply({ content: `✅ **${nom}** mis à jour.`, ephemeral: true });
+    return true;
+  }
+
+  // --- 🗑️ Supprimer logement ---
+  if (customId === BTN_DEL) {
+    const state = loadState();
+    const logements = Object.values(state.logements);
+    if (logements.length === 0) {
+      await interaction.reply({ content: "ℹ️ Aucun logement à supprimer.", ephemeral: true });
+      return true;
+    }
+    const options = logements.slice(0, 25).map(l => {
+      const icon = l.statut === "libre" ? "🟢" : l.statut === "loue" ? "🔴" : "🧹";
+      return { label: `${icon} ${l.nom}`, description: `${formatEuro(l.prixNuit)}/nuit · ${l.adresse}`, value: l.id };
+    });
+    await interaction.reply({
+      content: "🗑️ Quel logement souhaitez-vous supprimer ?",
+      components: [new ActionRowBuilder().addComponents(new StringSelectMenuBuilder().setCustomId(SELECT_LOG_DEL).setPlaceholder("Sélectionner un logement").addOptions(options))],
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  // --- Select logement à supprimer ---
+  if (customId === SELECT_LOG_DEL) {
+    const logId = interaction.values[0];
+    const state = loadState();
+    const log   = state.logements[logId];
+    if (!log) { await interaction.update({ content: "❌ Logement introuvable.", components: [] }); return true; }
+    if (log.statut === "loue") {
+      await interaction.update({ content: `❌ **${log.nom}** est actuellement loué. Effectuez le check-out avant de le supprimer.`, components: [] });
+      return true;
+    }
+    delete state.logements[logId];
+    saveState(state);
+    await updatePanel(client);
+    await interaction.update({ content: `✅ **${log.nom}** supprimé du parc locatif.`, components: [] });
     return true;
   }
 
