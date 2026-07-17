@@ -80,6 +80,7 @@ const { pullAllStateFiles, GITHUB_ENABLED, flushPendingWrites, testGithubWrite }
 const { handleCorrectifInteraction } = require("./correctif");
 const { handleBankInteraction, handleSecretBankCommand, startRichestLeaderboardScheduler } = require("./bank");
 const { setupIrfPanel, handleIrfInteraction } = require("./irf");
+const { setupAirbnbPanel, handleAirbnbInteraction } = require("./airbnb");
 const { handleParisInteraction } = require("./paris");
 const { handleSend1Interaction } = require("./send1");
 const { handleCasinoInteraction } = require("./casino");
@@ -714,6 +715,7 @@ client.once("ready", async () => {
       "casino-state.json",
       "license-state.json",
       "irf-state.json",
+      "airbnb-state.json",
     ]);
     console.log("Synchronisation terminée.");
   } else {
@@ -748,6 +750,7 @@ client.once("ready", async () => {
   await setupMissionPanel(client).catch(() => null);
   await setupReopeningAnnouncement(client).catch(() => null);
   await setupIrfPanel(client).catch((err) => console.error("❌ Erreur panel IRF:", err.message));
+  await setupAirbnbPanel(client).catch((err) => console.error("❌ Erreur panel Airbnb:", err.message));
 });
 
 client.on(Events.MessageCreate, async (message) => {
@@ -759,6 +762,7 @@ client.on(Events.MessageCreate, async (message) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (await handleIrfInteraction(interaction, client)) return;
+  if (await handleAirbnbInteraction(interaction, client)) return;
   if (await handleCreditInteraction(interaction, client)) return;
   if (await handleChatInteraction(interaction)) return;
   if (await handleCorrectifInteraction(interaction)) return;
