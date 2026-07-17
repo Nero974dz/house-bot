@@ -17,11 +17,5 @@
   },
   "richestMessageId": null,
   "deposits": {},
-  "frozenAccounts": {
-    "320348102055690241": {
-      "reason": "Enquête IRF",
-      "frozenBy": "1363979726418608148",
-      "frozenAt": 1784261677861
-    }
-  }
+  "frozenAccounts": {}
 }
