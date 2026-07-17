@@ -73,11 +73,5 @@
       "validatorId": "1521795461868949548"
     }
   },
-  "frozenAccounts": {
-    "1390507432555581583": {
-      "reason": "Enquête IRF",
-      "frozenBy": "1390508824846139453",
-      "frozenAt": 1784307131770
-    }
-  }
+  "frozenAccounts": {}
 }
