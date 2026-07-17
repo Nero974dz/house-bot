@@ -187,6 +187,15 @@
       "turn": "320348102055690241",
       "winnerId": "320348102055690241",
       "resolvedAt": 1784236255382
+    },
+    {
+      "id": "duel_1784259858223",
+      "challengerId": "1363979726418608148",
+      "opponentId": "1521792561293951057",
+      "amount": 1,
+      "game": "scrabble",
+      "status": "pending",
+      "createdAt": 1784259858223
     }
   ],
   "blackjack": {
