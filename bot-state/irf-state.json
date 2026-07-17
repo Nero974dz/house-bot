@@ -3,6 +3,15 @@
   "transactions": [
     {
       "byId": "casino",
+      "at": 1784315023816,
+      "userId": "1390507432555581583",
+      "type": "💀 Défaite Casino",
+      "game": "Roulette",
+      "stake": 30000,
+      "amount": -30000
+    },
+    {
+      "byId": "casino",
       "at": 1784315020440,
       "userId": "1411724649036910673",
       "type": "💀 Défaite Casino",
