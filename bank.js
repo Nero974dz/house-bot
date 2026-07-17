@@ -56,8 +56,20 @@ function loadState() {
 }
 
 function saveState(state) {
+  // Garde-fou : ne jamais sauvegarder un état vide (évite d'écraser les vraies données après un pull raté)
+  if (!state.balances || Object.keys(state.balances).length === 0) {
+    const existing = loadStateRaw();
+    if (existing && Object.keys(existing.balances || {}).length > 0) {
+      console.warn("[bank] saveState bloqué : tentative d'écriture d'un état vide alors que des données existent.");
+      return;
+    }
+  }
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   persistState("bank-state.json");
+}
+
+function loadStateRaw() {
+  try { return JSON.parse(fs.readFileSync(STATE_FILE, "utf8")); } catch { return null; }
 }
 
 function round2(n) {
@@ -158,6 +170,15 @@ function addFunds(userId, amount) {
 
 function removeFunds(userId, amount) {
   return addFunds(userId, -amount);
+}
+
+/** Retire des fonds même sur un compte gelé (amendes IRF, saisies). Peut mettre en négatif. */
+function forceRemoveFunds(userId, amount) {
+  const state = loadState();
+  ensureAccount(state, userId);
+  state.balances[userId] = round2(state.balances[userId] - amount);
+  saveState(state);
+  return state.balances[userId];
 }
 
 function hasEnough(userId, amount) {
@@ -372,8 +393,8 @@ async function handleBankInteraction(interaction, client) {
       return true;
     }
 
-    const saisi = round2(Math.min(amount, current));
-    const newBalance = removeFunds(target.id, saisi);
+    const saisi = amount;
+    const newBalance = forceRemoveFunds(target.id, saisi);
 
     // Log dans le salon de transactions
     await logTransaction(client, {
@@ -1156,6 +1177,7 @@ module.exports = {
   BLACKLIST_BANK_ROLE_ID,
   startRichestLeaderboardScheduler,
   isAccountFrozen,
+  forceRemoveFunds,
   DEFAULT_BALANCE,
   TAX_RATE,
   TRANSACTION_LOG_CHANNEL_ID,

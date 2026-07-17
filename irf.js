@@ -11,7 +11,7 @@ const {
   UserSelectMenuBuilder,
 } = require("discord.js");
 const { getStatePath, persistState } = require("./storage");
-const { getBalance, addFunds, removeFunds, formatEuro } = require("./bank");
+const { getBalance, addFunds, removeFunds, forceRemoveFunds, formatEuro } = require("./bank");
 
 const IRF_CHANNEL_ID = "1527524719094534185";
 const IRF_ROLE_ID = "1527525759793762586";
@@ -482,15 +482,8 @@ async function handleIrfInteraction(interaction, client) {
       await interaction.reply({ content: "❌ Montant invalide.", ephemeral: true });
       return true;
     }
-    if (isAccountFrozen(targetId)) {
-      await interaction.reply({ content: "❌ Ce compte est gelé. Dégelez-le d'abord.", ephemeral: true });
-      return true;
-    }
-
-    const currentBalance = getBalance(targetId);
-    const deducted = Math.min(amount, currentBalance); // ne pas mettre en négatif
-    removeFunds(targetId, deducted);
-    logIrfTransaction({ userId: targetId, type: `💸 Amende (${motif})`, amount: -deducted, byId: interaction.user.id, at: Date.now() });
+    forceRemoveFunds(targetId, amount);
+    logIrfTransaction({ userId: targetId, type: `💸 Amende (${motif})`, amount: -amount, byId: interaction.user.id, at: Date.now() });
 
     const logChan = await client.channels.fetch(TRANSACTION_LOG_CHANNEL_ID).catch(() => null);
     if (logChan?.isTextBased()) {
