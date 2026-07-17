@@ -1,6 +1,6 @@
 {
   "messageId": "1527536434955944008",
-  "jackpot": 25226.74,
+  "jackpot": 25276.74,
   "duels": [
     {
       "id": "duel_1784166432061",
@@ -504,7 +504,7 @@
       "opponentId": "1411724649036910673",
       "amount": 500,
       "game": "bj1v1",
-      "status": "playing",
+      "status": "resolved",
       "createdAt": 1784316295606,
       "bjDeck": [
         {
@@ -722,8 +722,12 @@
           }
         ]
       },
-      "bjStood": {},
-      "turn": "1411724649036910673"
+      "bjStood": {
+        "1411724649036910673": true
+      },
+      "turn": "1411724649036910673",
+      "winnerId": "1411724649036910673",
+      "resolvedAt": 1784316314185
     }
   ],
   "blackjack": {}
