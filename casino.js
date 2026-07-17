@@ -120,6 +120,72 @@ function drawScrabbleLetters(n = 7) {
   return letters;
 }
 
+// Liste de mots français valides (courants, simples)
+const MOTS_VALIDES = new Set([
+  "AMI","AMIE","AMIS","AME","AMES","AN","ANS","ARC","ARCS","ART","ARTS",
+  "AS","AU","AUX","AVE","AXE","AXES","BAS","BAL","BAT","BLE","BON","BONS",
+  "BOT","BUS","BUT","BUTS","CAR","CAS","CEL","CES","CLE","CLES","COL","COLS",
+  "COU","COUP","CRI","CRIS","CRU","CRUe","DAL","DAM","DES","DEU","DIX","DUO",
+  "EAU","EAUX","ELU","ELUS","EMU","EMUS","ERA","EST","ETE","ETES","EUX",
+  "FAC","FAN","FANS","FAR","FEU","FEUX","FIL","FILS","FIN","FINS","FIS",
+  "FIT","FOI","FON","FOU","FOUS","FRU","FUT","FUTS","GAL","GAZ","GEL","GELS",
+  "GIT","GOT","GUS","ICI","ILE","ILES","ILS","JAB","JAR","JET","JETS","JEU",
+  "JEUX","JUS","LAC","LACS","LAI","LAS","LES","LIT","LITS","LOI","LOIS",
+  "LOT","LOTS","LOU","LUE","LUI","LUN","LUT","MAI","MAL","MALS","MAN","MER",
+  "MERS","MET","METS","MIL","MIS","MOI","MON","MOT","MOTS","MOU","MUS","MUT",
+  "NAN","NEF","NEO","NET","NETS","NEU","NID","NIDS","NIT","NON","NOR","NOS",
+  "NOT","NUE","NUL","NULS","ODE","ODES","OIE","OIES","OLE","ONU","ONT","OPE",
+  "ORA","ORB","ORC","ORE","ORF","ORS","OSE","OTE","OUI","OUR","PAC","PAI",
+  "PAN","PANS","PAR","PAS","PAT","PAU","PAX","PEU","PIE","PIES","PIN","PINS",
+  "PIS","PIT","PIU","PLI","PLIS","POI","POL","PON","POT","POTS","POU","POUX",
+  "PRE","PRES","PRO","PROS","PUB","PUBS","PUR","PURS","PUS","RAI","RAN","RAS",
+  "RAT","RATS","REC","REI","REL","REM","REN","REP","RES","REU","REV","REX",
+  "RIZ","ROC","ROCS","ROI","ROIS","ROM","RON","ROS","ROT","ROU","RUE","RUES",
+  "SAC","SACS","SAI","SAL","SAP","SAR","SAT","SEL","SELS","SET","SETS","SEU",
+  "SIC","SIS","SIT","SIX","SKI","SKIS","SOI","SOL","SOLS","SON","SONS","SOT",
+  "SOU","SOUS","SUD","SUI","SUR","TAC","TAI","TAL","TAN","TAP","TAR","TAS",
+  "TAU","TEL","TEN","TES","THE","TIC","TICS","TIR","TIRS","TOI","TON","TONS",
+  "TOP","TOPS","TOT","TOU","TRI","TRIS","TUB","TUBS","TUE","TUN","TUS","TUT",
+  "UNE","UNI","UNIS","URE","USE","USES","VAL","VAN","VAR","VAS","VEU","VIA",
+  "VIE","VIES","VIN","VINS","VIS","VIT","VIX","VOI","VOL","VOLS","VOS","VOU",
+  "VUE","VUES","VUS","YEN","YENS","ZAP","ZEN","ZIP","ZIT","ZOO","ZOOS",
+  // mots de 4-5 lettres courants
+  "ARME","ARMES","AIDE","AIDES","AIRE","AIRS","AISE","AIME","AIGU","AILE",
+  "AILES","AOUT","APRE","APRES","ASIE","BAIN","BAINS","BALE","BALL","BAND",
+  "BASE","BASES","BEAU","BEAUX","BETE","BETES","BIEN","BIER","BILE","BISE",
+  "BORD","BORDS","BRAS","BREF","BRIN","BRINS","BRUN","BRUNE","CAGE","CAGES",
+  "CAKE","CALE","CANE","CAPE","CARA","CARE","CASE","CAVE","CELA","CENT",
+  "CEUX","CHAR","CHAT","CHEF","CHER","CHEZ","CHOC","CITE","CITE","CLEF",
+  "CODE","CODES","COIN","COIN","COLA","COMA","COME","CONE","COPE","CORE",
+  "COTE","COUP","COUR","CRIE","CURE","DAME","DAMES","DARE","DEJA","DELE",
+  "DEMI","DENS","VENT","VENTS","VIDE","VIDES","VILE","VILS","VITE","VOIE",
+  "VOIES","VOIR","VOLE","VOLS","VRAI","VRAIS","ZONE","ZONES","ZERO","ZEROS",
+  "TOUR","TOURS","TOIT","TOITS","SOIR","SOINS","ROSE","ROBE","ROUE","ROUES",
+  "PEUR","PEURS","PORTE","PONT","PONTS","PLAT","PLATS","PLAN","PLANS","PIAF",
+  "PARC","PARCS","PARE","PART","PARTS","PAYS","PEAU","PEAUX","PERE","PERES",
+  "LIEU","LIEUX","LIEN","LIENS","LAME","LAMES","LAIT","LAIE","LEGE","LENT",
+  "LAVE","LARD","LARGE","LACE","LUXE","LUNE","LUNES","LUGE","LUEUR","LOUE",
+  "MAXI","MARE","MARES","MARI","MARS","MERE","MERES","MINE","MINES","MODE",
+  "MODES","MOIS","MOLE","MONT","MONTS","MORT","MORTS","MOUE","MOUES","MULE",
+  "NUIT","NUITS","NOME","NOME","NOTE","NOTES","NOUE","NOUS","NOIX","NOIR",
+  "NOIRE","LUNE","FUME","FUMES","FUSE","FUTE","GALE","GANT","GANTS","GARE",
+  "GARES","GATE","GAVE","GAZON","GAZE","GELE","GENE","GENS","GITE","GITES",
+  "GAVE","JUPE","JUPES","JOUE","JOUES","JOUR","JOURS","JOIE","JOIES",
+  "HAUT","HAUTS","HERO","HEROS","HIER","HOTE","HOTES","HURE",
+  "FACE","FACES","FADE","FAIM","FAIRE","FAIT","FAITS","FAME","FARD","FARE",
+  "SEAU","SEAUX","SEUL","SEULE","SEXE","SIGE","SITE","SITES","SOLE","SOLES",
+  "SOIE","SOIES","SORT","SORTS","SOTE","SOUS","SURE","SURS","SUIT","SUITE",
+  "TARE","TARES","TACT","TACTS","TALE","TELE","TENU","TENUE","TIGE","TIGES",
+  "TIRE","TOME","TOMES","TORE","TORT","TORTS","TOUE","TOUES","TOUX",
+  "RACE","RACES","RAGE","RAGES","RAIE","RAIES","RAME","RAMES","RANG","RANGS",
+  "RAPE","RARE","RATE","RAVE","REAL","REEL","REIN","REINS","RENE","REVE",
+  "REVES","RIEN","RIME","RIME","RITE","RITES","RIVE","RIVES","ROLE","ROLES",
+]);
+
+function isMotValide(word) {
+  return MOTS_VALIDES.has(word.toUpperCase());
+}
+
 /** Vérifie qu'un mot n'utilise que les lettres disponibles (avec doublons). */
 function canFormWord(word, rack) {
   const avail = {};
@@ -1050,7 +1116,7 @@ function buildBj1v1Embed(duel, reveal = false) {
       : `${formatHand(hand)} = **${handTotal(hand)}**`;
   };
 
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setColor(reveal ? 0x2ecc71 : 0x2c3e50)
     .setTitle("🃏 Blackjack 1v1")
     .setDescription(
@@ -1060,6 +1126,8 @@ function buildBj1v1Embed(duel, reveal = false) {
         `<@${oId}> : ${handText(oHand, oId)}`
     )
     .setTimestamp();
+  if (IMAGES.blackjack) embed.setImage(IMAGES.blackjack);
+  return embed;
 }
 
 function buildBj1v1Row(duelId) {
@@ -1359,11 +1427,14 @@ async function handleCasinoInteraction(interaction, client) {
       }
 
       if (game === "scrabble") {
+        const SCRABBLE_TIME = 30;
+        const deadline = Math.floor(Date.now() / 1000) + SCRABBLE_TIME;
         duel.racks = {
           [duel.challengerId]: drawScrabbleLetters(7),
           [duel.opponentId]: drawScrabbleLetters(7),
         };
         duel.words = {};
+        duel.scrabbleDeadline = deadline;
         saveDuel(duel);
 
         const embed = new EmbedBuilder()
@@ -1371,12 +1442,13 @@ async function handleCasinoInteraction(interaction, client) {
           .setTitle("🔡 Scrabble — Meilleur mot")
           .setDescription(
             `<@${duel.challengerId}> 🆚 <@${duel.opponentId}> — **${formatEuro(duel.amount)}**\n\n` +
+              `⏱️ Temps restant : <t:${deadline}:R>\n\n` +
               "Chaque joueur clique sur le bouton pour voir **ses lettres** et proposer **le mot le plus cher**.\n" +
               "Vous devez utiliser uniquement vos lettres. Le plus haut score gagne !"
           )
           .setTimestamp();
 
-        await interaction.update({
+        const msg = await interaction.update({
           content: `<@${duel.challengerId}> <@${duel.opponentId}>`,
           embeds: [embed],
           components: [
@@ -1388,7 +1460,53 @@ async function handleCasinoInteraction(interaction, client) {
                 .setStyle(ButtonStyle.Primary)
             ),
           ],
+          fetchReply: true,
         });
+
+        // Résolution automatique après 30 secondes
+        setTimeout(async () => {
+          const s = loadState();
+          const d = s.duels.find((x) => x.id === duel.id);
+          if (!d || d.status !== "playing" || d.game !== "scrabble") return;
+
+          const cId = d.challengerId;
+          const oId = d.opponentId;
+          const cWord = d.words?.[cId];
+          const oWord = d.words?.[oId];
+
+          // Si personne n'a joué → remboursement
+          if (!cWord && !oWord) {
+            await finishDuel(client, d, null);
+            const timeoutEmbed = new EmbedBuilder()
+              .setColor(0xe74c3c)
+              .setTitle("🔡 Scrabble — Temps écoulé !")
+              .setDescription("⏰ Aucun joueur n'a proposé de mot. Mises remboursées.")
+              .setTimestamp();
+            await msg.edit({ content: "", embeds: [timeoutEmbed], components: [] }).catch(() => null);
+            return;
+          }
+
+          // Un seul joueur a joué → il gagne automatiquement
+          let winnerId = null;
+          if (cWord && !oWord) winnerId = cId;
+          else if (oWord && !cWord) winnerId = oId;
+          else if (cWord.score > oWord.score) winnerId = cId;
+          else if (oWord.score > cWord.score) winnerId = oId;
+
+          const payout = await finishDuel(client, d, winnerId);
+          const resultEmbed = new EmbedBuilder()
+            .setColor(0x2ecc71)
+            .setTitle("🔡 Scrabble — Temps écoulé !")
+            .setDescription(
+              (cWord ? `<@${cId}> : **${cWord.word}** (${cWord.score} pts)\n` : `<@${cId}> : ❌ n'a pas joué\n`) +
+                (oWord ? `<@${oId}> : **${oWord.word}** (${oWord.score} pts)\n\n` : `<@${oId}> : ❌ n'a pas joué\n\n`) +
+                (winnerId ? `🏆 <@${winnerId}> remporte **${formatEuro(payout)}** !` : "🤝 Égalité — mises remboursées.")
+            )
+            .setTimestamp();
+
+          await msg.edit({ content: `<@${cId}> <@${oId}>`, embeds: [resultEmbed], components: [] }).catch(() => null);
+        }, SCRABBLE_TIME * 1000);
+
         return true;
       }
 
@@ -1771,6 +1889,13 @@ async function handleCasinoInteraction(interaction, client) {
 
       if (!raw || raw.length < 2) {
         await interaction.reply({ content: "❌ Mot trop court (2 lettres minimum).", ephemeral: true });
+        return true;
+      }
+      if (!isMotValide(raw)) {
+        await interaction.reply({
+          content: `❌ **${raw}** n'est pas un mot valide. Proposez un mot français courant.`,
+          ephemeral: true,
+        });
         return true;
       }
       if (!canFormWord(raw, rack)) {
