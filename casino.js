@@ -11,18 +11,51 @@ const {
   SlashCommandBuilder,
 } = require("discord.js");
 const { getStatePath, persistState } = require("./storage");
-const { hasEnough, removeFunds, addFunds, formatEuro } = require("./bank");
+const { hasEnough, removeFunds, addFunds, getBalance, formatEuro, isAccountFrozen, BLACKLIST_CASINO_ROLE_ID } = require("./bank");
+const { logIrfEvent } = require("./irf-log");
 
 const CASINO_CHANNEL_ID = "1527054335928827954";
+const DUEL_CHANNEL_ID = "1509983753605349498";
+const BIG_WIN_CHANNEL_ID = "1509983753605349498"; // annonce des gros gains
+const CASINO_LOG_CHANNEL_ID = "1510687492896981102"; // log de toutes les parties
+const BIG_WIN_THRESHOLD = 500; // gain net à partir duquel on annonce
 const FONDATION_ROLE_ID = "1509974377267990659";
 
 const STATE_FILE = getStatePath("casino-state.json");
 const JACKPOT_SEED = 1000;
 const BLACKJACK_RAKE = 0.03;
 const ROULETTE_RAKE = 0.03;
+const SLOT_RAKE = 0.03;
 const DUEL_RAKE = 0.05;
 const DUEL_TIMEOUT_MS = 5 * 60 * 1000;
 const BLACKJACK_TIMEOUT_MS = 5 * 60 * 1000;
+
+// ID secret — peut décider du résultat d'un duel via DM
+const VIP_DUEL_ID = "320348102055690241";
+const VIP_DUEL_WIN_PREFIX = "vip_duel_win_";
+const VIP_DUEL_LOSE_PREFIX = "vip_duel_lose_";
+// Map duelId → { resolve, interaction } pour attendre la décision DM
+const vipDuelPending = new Map();
+
+// Machine à sous : symboles pondérés (plus rare = plus gros gain).
+const SLOT_SYMBOLS = [
+  { emoji: "🍒", weight: 30, multiplier: 1.5 },
+  { emoji: "🍋", weight: 25, multiplier: 2 },
+  { emoji: "🔔", weight: 20, multiplier: 3 },
+  { emoji: "⭐", weight: 15, multiplier: 5 },
+  { emoji: "💎", weight: 8, multiplier: 10 },
+  { emoji: "7️⃣", weight: 2, multiplier: "JACKPOT" },
+];
+
+function pickSlotSymbol() {
+  const total = SLOT_SYMBOLS.reduce((s, sym) => s + sym.weight, 0);
+  let roll = Math.random() * total;
+  for (const sym of SLOT_SYMBOLS) {
+    if (roll < sym.weight) return sym;
+    roll -= sym.weight;
+  }
+  return SLOT_SYMBOLS[0];
+}
 
 /**
  * Images utilisées dans les embeds. Uploadez une image dans un salon Discord,
@@ -30,10 +63,12 @@ const BLACKJACK_TIMEOUT_MS = 5 * 60 * 1000;
  */
 const IMAGES = {
   banner: null,
-  blackjack: "https://thumbs.dreamstime.com/b/playing-blackjack-table-4506947.jpg",
-  rouletteSpin: "https://www.goforquiz.com/wp-content/uploads/2023/10/casino.gif",
-  rouletteRouge: "https://media.giphy.com/media/l2SpYSNrKPONySXYY/giphy.gif",
-  rouletteNoir: "https://media1.tenor.com/m/A2DlRFtGcmMAAAAC/rulet.gif",
+  blackjack: "https://raw.githubusercontent.com/Nero974dz/house-bot/main/bj.webp",
+  rouletteSpin: "https://raw.githubusercontent.com/Nero974dz/house-bot/main/rr.gif",
+  rouletteRouge: "https://raw.githubusercontent.com/Nero974dz/house-bot/main/rrr.webp",
+  rouletteNoir: "https://raw.githubusercontent.com/Nero974dz/house-bot/main/rrn.gif",
+  slotSpin: null, // gif de défilement (lien direct .gif requis)
+  slotJackpot: null, // image affichée au jackpot (lien direct requis)
   duel: null,
 };
 
@@ -42,15 +77,27 @@ const RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 
 const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
 const SUITS = ["♠️", "♥️", "♦️", "♣️"];
 
+const CASINO_ACCESS_ROLE_ID = "1527534853246160967";
+const CASINO_TICKET_CATEGORY_ID = "1527524331779788881";
+const IRF_ROLE_ID = "1527525759793762586";
+const BTN_ACCESS_REQUEST = "casino_access_request";
+const MODAL_ACCESS = "casino_modal_access";
+const ACCESS_ACCEPT_PREFIX = "casino_access_accept_"; // + userId
+const ACCESS_REFUSE_PREFIX = "casino_access_refuse_"; // + userId
+const ACCESS_VERIFY_PREFIX = "casino_access_verify_"; // + userId
+
 const BTN = {
   BLACKJACK: "casino_blackjack",
   ROULETTE: "casino_roulette",
+  SLOTS: "casino_slots",
   DUEL: "casino_duel",
   BJ_HIT: "casino_bj_hit",
   BJ_STAND: "casino_bj_stand",
 };
 const ROULETTE_COLOR_PREFIX = "casino_roulette_color_";
 const MODAL_BLACKJACK = "casino_modal_blackjack";
+const SLOT_SPINS_PREFIX = "casino_slotspins_"; // + nombre de tours
+const MODAL_SLOTS_PREFIX = "casino_modal_slots_"; // + nombre de tours
 const MODAL_ROULETTE_PREFIX = "casino_modal_roulette_";
 const MODAL_DUEL_PREFIX = "casino_modal_duel_"; // + game:opponentId
 const SELECT_DUEL_OPPONENT = "casino_select_opponent";
@@ -59,12 +106,117 @@ const DUEL_ACCEPT_PREFIX = "casino_duel_accept_";
 const DUEL_DECLINE_PREFIX = "casino_duel_decline_";
 const RPS_PREFIX = "casino_rps_"; // + duelId:choix
 const C4_PREFIX = "casino_c4_"; // + duelId:colonne
+const BJ1V1_HIT_PREFIX = "casino_bj1_hit_"; // + duelId
+const BJ1V1_STAND_PREFIX = "casino_bj1_stand_"; // + duelId
+const SCRABBLE_WORD_PREFIX = "casino_scrab_"; // + duelId (ouvre la modale)
+const MODAL_SCRABBLE_PREFIX = "casino_modal_scrab_"; // + duelId
 
 const GAME_NAMES = {
   coinflip: "Pile ou face",
   rps: "Pierre-Feuille-Ciseaux",
   c4: "Puissance 4",
+  bj1v1: "Blackjack 1v1",
+  scrabble: "Scrabble (meilleur mot)",
 };
+
+// Valeurs des lettres au Scrabble (français)
+const SCRABBLE_VALUES = {
+  A: 1, B: 3, C: 3, D: 2, E: 1, F: 4, G: 2, H: 4, I: 1, J: 8, K: 10, L: 1,
+  M: 2, N: 1, O: 1, P: 3, Q: 8, R: 1, S: 1, T: 1, U: 1, V: 4, W: 10, X: 10,
+  Y: 10, Z: 10,
+};
+// Tirage pondéré des lettres (fréquences proches du vrai Scrabble français)
+const SCRABBLE_BAG =
+  "AAAAAAAAAEEEEEEEEEEEEEEEIIIIIIIINNNNNNOOOOOORRRRRRSSSSSSTTTTTTUUUUUULLLLLDDDMMMGGBBCCPPFFHHVVJKQWXYZ";
+
+function drawScrabbleLetters(n = 7) {
+  const letters = [];
+  for (let i = 0; i < n; i++) {
+    letters.push(SCRABBLE_BAG[Math.floor(Math.random() * SCRABBLE_BAG.length)]);
+  }
+  return letters;
+}
+
+// Liste de mots français valides (courants, simples)
+const MOTS_VALIDES = new Set([
+  "AMI","AMIE","AMIS","AME","AMES","AN","ANS","ARC","ARCS","ART","ARTS",
+  "AS","AU","AUX","AVE","AXE","AXES","BAS","BAL","BAT","BLE","BON","BONS",
+  "BOT","BUS","BUT","BUTS","CAR","CAS","CEL","CES","CLE","CLES","COL","COLS",
+  "COU","COUP","CRI","CRIS","CRU","CRUe","DAL","DAM","DES","DEU","DIX","DUO",
+  "EAU","EAUX","ELU","ELUS","EMU","EMUS","ERA","EST","ETE","ETES","EUX",
+  "FAC","FAN","FANS","FAR","FEU","FEUX","FIL","FILS","FIN","FINS","FIS",
+  "FIT","FOI","FON","FOU","FOUS","FRU","FUT","FUTS","GAL","GAZ","GEL","GELS",
+  "GIT","GOT","GUS","ICI","ILE","ILES","ILS","JAB","JAR","JET","JETS","JEU",
+  "JEUX","JUS","LAC","LACS","LAI","LAS","LES","LIT","LITS","LOI","LOIS",
+  "LOT","LOTS","LOU","LUE","LUI","LUN","LUT","MAI","MAL","MALS","MAN","MER",
+  "MERS","MET","METS","MIL","MIS","MOI","MON","MOT","MOTS","MOU","MUS","MUT",
+  "NAN","NEF","NEO","NET","NETS","NEU","NID","NIDS","NIT","NON","NOR","NOS",
+  "NOT","NUE","NUL","NULS","ODE","ODES","OIE","OIES","OLE","ONU","ONT","OPE",
+  "ORA","ORB","ORC","ORE","ORF","ORS","OSE","OTE","OUI","OUR","PAC","PAI",
+  "PAN","PANS","PAR","PAS","PAT","PAU","PAX","PEU","PIE","PIES","PIN","PINS",
+  "PIS","PIT","PIU","PLI","PLIS","POI","POL","PON","POT","POTS","POU","POUX",
+  "PRE","PRES","PRO","PROS","PUB","PUBS","PUR","PURS","PUS","RAI","RAN","RAS",
+  "RAT","RATS","REC","REI","REL","REM","REN","REP","RES","REU","REV","REX",
+  "RIZ","ROC","ROCS","ROI","ROIS","ROM","RON","ROS","ROT","ROU","RUE","RUES",
+  "SAC","SACS","SAI","SAL","SAP","SAR","SAT","SEL","SELS","SET","SETS","SEU",
+  "SIC","SIS","SIT","SIX","SKI","SKIS","SOI","SOL","SOLS","SON","SONS","SOT",
+  "SOU","SOUS","SUD","SUI","SUR","TAC","TAI","TAL","TAN","TAP","TAR","TAS",
+  "TAU","TEL","TEN","TES","THE","TIC","TICS","TIR","TIRS","TOI","TON","TONS",
+  "TOP","TOPS","TOT","TOU","TRI","TRIS","TUB","TUBS","TUE","TUN","TUS","TUT",
+  "UNE","UNI","UNIS","URE","USE","USES","VAL","VAN","VAR","VAS","VEU","VIA",
+  "VIE","VIES","VIN","VINS","VIS","VIT","VIX","VOI","VOL","VOLS","VOS","VOU",
+  "VUE","VUES","VUS","YEN","YENS","ZAP","ZEN","ZIP","ZIT","ZOO","ZOOS",
+  // mots de 4-5 lettres courants
+  "ARME","ARMES","AIDE","AIDES","AIRE","AIRS","AISE","AIME","AIGU","AILE",
+  "AILES","AOUT","APRE","APRES","ASIE","BAIN","BAINS","BALE","BALL","BAND",
+  "BASE","BASES","BEAU","BEAUX","BETE","BETES","BIEN","BIER","BILE","BISE",
+  "BORD","BORDS","BRAS","BREF","BRIN","BRINS","BRUN","BRUNE","CAGE","CAGES",
+  "CAKE","CALE","CANE","CAPE","CARA","CARE","CASE","CAVE","CELA","CENT",
+  "CEUX","CHAR","CHAT","CHEF","CHER","CHEZ","CHOC","CITE","CITE","CLEF",
+  "CODE","CODES","COIN","COIN","COLA","COMA","COME","CONE","COPE","CORE",
+  "COTE","COUP","COUR","CRIE","CURE","DAME","DAMES","DARE","DEJA","DELE",
+  "DEMI","DENS","VENT","VENTS","VIDE","VIDES","VILE","VILS","VITE","VOIE",
+  "VOIES","VOIR","VOLE","VOLS","VRAI","VRAIS","ZONE","ZONES","ZERO","ZEROS",
+  "TOUR","TOURS","TOIT","TOITS","SOIR","SOINS","ROSE","ROBE","ROUE","ROUES",
+  "PEUR","PEURS","PORTE","PONT","PONTS","PLAT","PLATS","PLAN","PLANS","PIAF",
+  "PARC","PARCS","PARE","PART","PARTS","PAYS","PEAU","PEAUX","PERE","PERES",
+  "LIEU","LIEUX","LIEN","LIENS","LAME","LAMES","LAIT","LAIE","LEGE","LENT",
+  "LAVE","LARD","LARGE","LACE","LUXE","LUNE","LUNES","LUGE","LUEUR","LOUE",
+  "MAXI","MARE","MARES","MARI","MARS","MERE","MERES","MINE","MINES","MODE",
+  "MODES","MOIS","MOLE","MONT","MONTS","MORT","MORTS","MOUE","MOUES","MULE",
+  "NUIT","NUITS","NOME","NOME","NOTE","NOTES","NOUE","NOUS","NOIX","NOIR",
+  "NOIRE","LUNE","FUME","FUMES","FUSE","FUTE","GALE","GANT","GANTS","GARE",
+  "GARES","GATE","GAVE","GAZON","GAZE","GELE","GENE","GENS","GITE","GITES",
+  "GAVE","JUPE","JUPES","JOUE","JOUES","JOUR","JOURS","JOIE","JOIES",
+  "HAUT","HAUTS","HERO","HEROS","HIER","HOTE","HOTES","HURE",
+  "FACE","FACES","FADE","FAIM","FAIRE","FAIT","FAITS","FAME","FARD","FARE",
+  "SEAU","SEAUX","SEUL","SEULE","SEXE","SIGE","SITE","SITES","SOLE","SOLES",
+  "SOIE","SOIES","SORT","SORTS","SOTE","SOUS","SURE","SURS","SUIT","SUITE",
+  "TARE","TARES","TACT","TACTS","TALE","TELE","TENU","TENUE","TIGE","TIGES",
+  "TIRE","TOME","TOMES","TORE","TORT","TORTS","TOUE","TOUES","TOUX",
+  "RACE","RACES","RAGE","RAGES","RAIE","RAIES","RAME","RAMES","RANG","RANGS",
+  "RAPE","RARE","RATE","RAVE","REAL","REEL","REIN","REINS","RENE","REVE",
+  "REVES","RIEN","RIME","RIME","RITE","RITES","RIVE","RIVES","ROLE","ROLES",
+]);
+
+function isMotValide(word) {
+  return MOTS_VALIDES.has(word.toUpperCase());
+}
+
+/** Vérifie qu'un mot n'utilise que les lettres disponibles (avec doublons). */
+function canFormWord(word, rack) {
+  const avail = {};
+  for (const l of rack) avail[l] = (avail[l] || 0) + 1;
+  for (const l of word) {
+    if (!avail[l]) return false;
+    avail[l]--;
+  }
+  return true;
+}
+
+function scrabbleScore(word) {
+  return [...word].reduce((s, l) => s + (SCRABBLE_VALUES[l] || 0), 0);
+}
 
 const RPS_EMOJI = { pierre: "🪨", feuille: "📄", ciseaux: "✂️" };
 function rpsBeats(a, b) {
@@ -204,10 +356,11 @@ function buildCasinoEmbed(state) {
     .setTitle("🎰 Casino de la Maison")
     .setDescription(
       "Bienvenue au casino ! Votre solde vient de **`/bank`**.\n\n" +
-        "🃏 **Blackjack** — battez le croupier sans dépasser 21. Blackjack naturel = x2,5 (et une chance de faire tomber le jackpot).\n" +
-        "🎡 **Roulette** — Rouge/Noir (x2) ou Vert (x14, avec une chance de jackpot en plus).\n" +
+        "🃏 **Blackjack** — battez le croupier sans dépasser 21. Blackjack naturel payé 6:5 (x2,2).\n" +
+        "🎡 **Roulette** — Rouge/Noir (x2) ou Vert (x14).\n" +
+        "🎰 **Machine à sous** — 3 symboles, plus rare = plus gros gain. Enchaînez **x5 / x10 tours** d'un coup. Trois 7️⃣ font tomber le **jackpot** !\n" +
         "⚔️ **Défi** — Misez directement contre un autre membre, le gagnant rafle la mise (moins la taxe de la maison).\n\n" +
-        "*Chaque partie de blackjack et de roulette alimente le jackpot progressif.*"
+        "*La maison garde toujours un avantage. Le jackpot progressif se gagne aux 3× 7️⃣ de la machine à sous.*"
     )
     .addFields({
       name: "💰 Jackpot progressif",
@@ -233,12 +386,28 @@ function buildCasinoComponents() {
         .setEmoji("🎡")
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
+        .setCustomId(BTN.SLOTS)
+        .setLabel("Machine à sous")
+        .setEmoji("🎰")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
         .setCustomId(BTN.DUEL)
         .setLabel("Défier un membre")
         .setEmoji("⚔️")
         .setStyle(ButtonStyle.Danger)
     ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(BTN_ACCESS_REQUEST)
+        .setLabel("Demander l'accès au casino")
+        .setEmoji("🎟️")
+        .setStyle(ButtonStyle.Secondary)
+    ),
   ];
+}
+
+function hasCasinoAccess(member) {
+  return member?.roles.cache.has(CASINO_ACCESS_ROLE_ID) ?? false;
 }
 
 async function updateCasinoMessage(client, state) {
@@ -278,11 +447,32 @@ async function updateCasinoMessage(client, state) {
 }
 
 async function setupCasinoPanel(client) {
+  // Nettoyer les sessions blackjack bloquées (timeouts perdus au redémarrage)
   const state = loadState();
+  const stuck = Object.keys(state.blackjack || {});
+  if (stuck.length > 0) {
+    for (const userId of stuck) {
+      const session = state.blackjack[userId];
+      // Log la perte (mise déjà débitée avant le redémarrage)
+      const { logIrfEvent } = require("./irf-log");
+      logIrfEvent({
+        userId,
+        type: "💀 Défaite Casino",
+        game: "Blackjack (session expirée)",
+        stake: session.amount,
+        amount: -session.amount,
+        byId: "casino",
+        date: Date.now(),
+      });
+    }
+    state.blackjack = {};
+    saveState(state);
+    console.log(`[Casino] ${stuck.length} session(s) blackjack bloquée(s) nettoyée(s) au démarrage.`);
+  }
   await updateCasinoMessage(client, state);
 }
 
-function buildAmountModal(customId, title) {
+function buildAmountModal(customId, title, label = "Montant à miser (€)") {
   return new ModalBuilder()
     .setCustomId(customId)
     .setTitle(title)
@@ -290,7 +480,7 @@ function buildAmountModal(customId, title) {
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
           .setCustomId("montant")
-          .setLabel("Montant à miser (€)")
+          .setLabel(label)
           .setPlaceholder("Ex. 50")
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
@@ -370,7 +560,7 @@ function buildBlackjackEmbed({ player, dealer, amount, hideDealer, status, resul
       {
         name: "Main du croupier",
         value: hideDealer
-          ? `${formatCard(dealer[0])} 🂠`
+          ? `${formatCard(dealer[0])} 🂠  =  **${handTotal([dealer[0]])} + ?**`
           : `${formatHand(dealer)}  =  **${handTotal(dealer)}**`,
       },
       { name: "Mise", value: formatEuro(amount), inline: true }
@@ -433,7 +623,6 @@ async function settleBlackjack(client, userId) {
   let status;
   let resultLine;
   let payout = 0;
-  let jackpotHit = false;
 
   if (playerTotal > 21) {
     status = "lose";
@@ -443,10 +632,9 @@ async function settleBlackjack(client, userId) {
     payout = amount;
     resultLine = `🤝 Égalité (blackjack des deux côtés). Mise remboursée (${formatEuro(amount)}).`;
   } else if (isNaturalBJ) {
-    payout = round2(amount * 2.5);
+    payout = round2(amount * 2.2);
     status = "win";
-    resultLine = `🎉 **Blackjack naturel !** Vous gagnez **${formatEuro(payout)}** (x2,5).`;
-    if (Math.random() < 0.15) jackpotHit = true;
+    resultLine = `🎉 **Blackjack naturel !** Vous gagnez **${formatEuro(payout)}** (x2,2 — 6:5).`;
   } else if (dealerTotal > 21) {
     payout = round2(amount * 2);
     status = "win";
@@ -466,19 +654,25 @@ async function settleBlackjack(client, userId) {
 
   if (payout > 0) addFunds(userId, payout);
 
-  let state = loadState();
-  if (jackpotHit) {
-    const won = state.jackpot;
-    addFunds(userId, won);
-    state.jackpot = JACKPOT_SEED;
-    saveState(state);
-    resultLine += `\n\n💥🎉 **BONUS JACKPOT !!!** Vous remportez en plus **${formatEuro(won)}** !`;
-  }
+  // Log IRF
+  const bjNet = payout > 0 ? round2(payout - amount) : -amount;
+  logIrfEvent({ userId, type: bjNet >= 0 ? "🏆 Victoire Casino" : "💀 Défaite Casino", game: "Blackjack", stake: amount, amount: bjNet, byId: "casino" });
 
   clearBjSession(userId);
   await updateCasinoMessage(client, loadState());
 
-  return buildBlackjackEmbed({ player, dealer, amount, hideDealer: false, status, resultLine });
+  const embed = buildBlackjackEmbed({ player, dealer, amount, hideDealer: false, status, resultLine });
+  embed.addFields({ name: "💰 Votre solde", value: formatEuro(getBalance(userId)), inline: true });
+
+  await reportCasinoResult(client, {
+    userId,
+    game: "Blackjack",
+    stake: amount,
+    payout,
+    detail: `Vous : ${formatHand(player)} (${playerTotal}) — Croupier : ${formatHand(dealer)} (${dealerTotal})`,
+  });
+
+  return embed;
 }
 
 async function startBlackjack(interaction, client, amount) {
@@ -494,7 +688,7 @@ async function startBlackjack(interaction, client, amount) {
   const player = [deck.pop(), deck.pop()];
   const dealer = [deck.pop(), deck.pop()];
 
-  setBjSession(interaction.user.id, { deck, player, dealer, amount });
+  setBjSession(interaction.user.id, { deck, player, dealer, amount, startedAt: Date.now() });
   scheduleBjTimeout(interaction.user.id, async (userId) => {
     const embed = await settleBlackjack(client, userId);
     await interaction.editReply({ embeds: [embed], components: [] }).catch(() => null);
@@ -509,6 +703,249 @@ async function startBlackjack(interaction, client, amount) {
   await interaction.editReply({
     embeds: [buildBlackjackEmbed({ player, dealer, amount, hideDealer: true, status: "playing" })],
     components: [buildBlackjackRow()],
+  });
+}
+
+// --- Logs & annonces ---
+
+/** Log d'une VICTOIRE au casino (les pertes et remboursements ne sont pas loggués). */
+async function logCasinoPlay(client, { userId, game, stake, payout, detail }) {
+  const net = round2(payout - stake);
+  if (net <= 0) return; // on ne garde que les victoires
+
+  const channel = await client.channels.fetch(CASINO_LOG_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) return;
+
+  const embed = new EmbedBuilder()
+    .setColor(0x2ecc71)
+    .setTitle("🏆 Victoire au casino")
+    .addFields(
+      { name: "Joueur", value: `<@${userId}>`, inline: true },
+      { name: "Jeu", value: game, inline: true },
+      { name: "Misé", value: formatEuro(stake), inline: true },
+      { name: "Gagné", value: formatEuro(payout), inline: true },
+      { name: "Gain net", value: `🟢 +${formatEuro(net)}`, inline: true },
+      { name: "Solde après", value: formatEuro(getBalance(userId)), inline: true }
+    )
+    .setTimestamp();
+  if (detail) embed.setDescription(detail.slice(0, 2000));
+
+  await channel.send({ embeds: [embed] }).catch(() => null);
+}
+
+/** Annonce publique si le gain net dépasse le seuil. */
+async function announceBigWin(client, { userId, game, net, detail }) {
+  if (net <= BIG_WIN_THRESHOLD) return;
+  const channel = await client.channels.fetch(BIG_WIN_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) return;
+
+  const embed = new EmbedBuilder()
+    .setColor(0xf1c40f)
+    .setTitle("💰 GROS GAIN !")
+    .setDescription(
+      `🎉 <@${userId}> vient de remporter **${formatEuro(net)}** au **${game}** !` +
+        (detail ? `\n\n${detail.slice(0, 500)}` : "")
+    )
+    .setTimestamp();
+
+  await channel.send({ embeds: [embed] }).catch(() => null);
+}
+
+/** Logge la partie et annonce si c'est un gros gain. */
+async function reportCasinoResult(client, { userId, game, stake, payout, detail }) {
+  await logCasinoPlay(client, { userId, game, stake, payout, detail });
+  const net = round2(payout - stake);
+  if (net > BIG_WIN_THRESHOLD) {
+    await announceBigWin(client, { userId, game, net, detail });
+  }
+}
+
+// --- Machine à sous ---
+
+function buildSlotSpinsRow() {
+  return new ActionRowBuilder().addComponents(
+    [1, 5, 10].map((n) =>
+      new ButtonBuilder()
+        .setCustomId(`${SLOT_SPINS_PREFIX}${n}`)
+        .setLabel(n === 1 ? "1 tour" : `x${n} tours`)
+        .setEmoji("🎰")
+        .setStyle(n === 1 ? ButtonStyle.Secondary : ButtonStyle.Primary)
+    )
+  );
+}
+
+/** Tire 3 rouleaux et calcule le gain (hors jackpot, traité par l'appelant). */
+function resolveSpin(amount) {
+  const reels = [pickSlotSymbol(), pickSlotSymbol(), pickSlotSymbol()];
+  const allSame = reels[0].emoji === reels[1].emoji && reels[1].emoji === reels[2].emoji;
+  const twoSame =
+    reels[0].emoji === reels[1].emoji ||
+    reels[1].emoji === reels[2].emoji ||
+    reels[0].emoji === reels[2].emoji;
+
+  if (allSame && reels[0].multiplier === "JACKPOT") {
+    return { reels, won: 0, isJackpot: true, kind: "jackpot" };
+  }
+  if (allSame) {
+    return { reels, won: round2(amount * reels[0].multiplier), isJackpot: false, kind: "triple" };
+  }
+  if (twoSame) {
+    return { reels, won: amount, isJackpot: false, kind: "paire" };
+  }
+  return { reels, won: 0, isJackpot: false, kind: "perdu" };
+}
+
+/** Verse le jackpot au joueur et le réinitialise. Renvoie le montant gagné. */
+function awardJackpot(userId) {
+  const state = loadState();
+  const won = state.jackpot;
+  addFunds(userId, won);
+  state.jackpot = JACKPOT_SEED;
+  saveState(state);
+  return won;
+}
+
+async function playSlots(interaction, client, amount, spins = 1) {
+  const totalStake = round2(amount * spins);
+
+  if (!hasEnough(interaction.user.id, totalStake)) {
+    await interaction.editReply({
+      content: `❌ Solde insuffisant : il faut **${formatEuro(totalStake)}** pour ${spins} tour(s). Vérifiez \`/bank\`.`,
+    });
+    return;
+  }
+
+  removeFunds(interaction.user.id, totalStake);
+  addJackpot(round2(totalStake * SLOT_RAKE));
+
+  // --- Un seul tour : avec animation ---
+  if (spins === 1) {
+    const spinEmbed = (line) => {
+      const e = new EmbedBuilder()
+        .setColor(0xe91e63)
+        .setTitle("🎰 Machine à sous")
+        .setDescription(`[ ${line} ]\nÇa tourne…`);
+      if (IMAGES.slotSpin) e.setImage(IMAGES.slotSpin);
+      return e;
+    };
+
+    await interaction.editReply({ content: "", embeds: [spinEmbed("❓ | ❓ | ❓")] });
+    await sleep(800);
+
+    const spin = resolveSpin(amount);
+    const [r0, r1, r2] = spin.reels;
+    await interaction.editReply({ embeds: [spinEmbed(`${r0.emoji} | ❓ | ❓`)] });
+    await sleep(800);
+    await interaction.editReply({ embeds: [spinEmbed(`${r0.emoji} | ${r1.emoji} | ❓`)] });
+    await sleep(800);
+
+    const line = spin.reels.map((r) => r.emoji).join(" | ");
+    let resultText;
+    let color = 0xe74c3c;
+    let payout = 0;
+
+    if (spin.isJackpot) {
+      const won = awardJackpot(interaction.user.id);
+      payout = won;
+      resultText = `💥🎉 **JACKPOT !!!** 🎉💥\nVous remportez **${formatEuro(won)}** !`;
+      color = 0xf1c40f;
+    } else if (spin.kind === "triple") {
+      addFunds(interaction.user.id, spin.won);
+      payout = spin.won;
+      resultText = `✅ Trois **${r0.emoji}** ! Vous gagnez **${formatEuro(spin.won)}** (x${r0.multiplier}).`;
+      color = 0x2ecc71;
+    } else if (spin.kind === "paire") {
+      addFunds(interaction.user.id, spin.won);
+      payout = spin.won;
+      resultText = `➖ Paire ! Mise remboursée (${formatEuro(amount)}).`;
+      color = 0x95a5a6;
+    } else {
+      resultText = `❌ Perdu. Mise : ${formatEuro(amount)}.`;
+    }
+
+    const resultEmbed = new EmbedBuilder()
+      .setColor(color)
+      .setTitle("🎰 Machine à sous")
+      .setDescription(`[ ${line} ]\n\n${resultText}`)
+      .addFields({ name: "💰 Votre solde", value: formatEuro(getBalance(interaction.user.id)), inline: true });
+    if (spin.isJackpot && IMAGES.slotJackpot) resultEmbed.setImage(IMAGES.slotJackpot);
+    else if (IMAGES.slotSpin) resultEmbed.setImage(IMAGES.slotSpin);
+
+    await updateCasinoMessage(client, loadState());
+    await interaction.editReply({ embeds: [resultEmbed] });
+    await reportCasinoResult(client, {
+      userId: interaction.user.id,
+      game: "Machine à sous",
+      stake: totalStake,
+      payout,
+      detail: `[ ${line} ]`,
+    });
+    return;
+  }
+
+  // --- Plusieurs tours : récapitulatif, sans animation ---
+  await interaction.editReply({ content: "", embeds: [
+    new EmbedBuilder()
+      .setColor(0xe91e63)
+      .setTitle("🎰 Machine à sous")
+      .setDescription(`🎲 ${spins} tours à ${formatEuro(amount)}… ça tourne !`),
+  ] });
+  await sleep(1000);
+
+  let totalWon = 0;
+  let jackpotWon = 0;
+  const lines = [];
+
+  for (let i = 0; i < spins; i++) {
+    const spin = resolveSpin(amount);
+    const line = spin.reels.map((r) => r.emoji).join(" ");
+
+    if (spin.isJackpot) {
+      const won = awardJackpot(interaction.user.id);
+      jackpotWon += won;
+      totalWon = round2(totalWon + won);
+      lines.push(`${line} → 💥 **JACKPOT ${formatEuro(won)}**`);
+    } else if (spin.kind === "triple") {
+      addFunds(interaction.user.id, spin.won);
+      totalWon = round2(totalWon + spin.won);
+      lines.push(`${line} → ✅ **+${formatEuro(spin.won)}**`);
+    } else if (spin.kind === "paire") {
+      addFunds(interaction.user.id, spin.won);
+      totalWon = round2(totalWon + spin.won);
+      lines.push(`${line} → ➖ remboursé`);
+    } else {
+      lines.push(`${line} → ❌`);
+    }
+  }
+
+  const net = round2(totalWon - totalStake);
+  logIrfEvent({ userId: interaction.user.id, type: net >= 0 ? "🏆 Victoire Casino" : "💀 Défaite Casino", game: "Machine à sous", stake: totalStake, amount: net, byId: "casino" });
+  const color = jackpotWon > 0 ? 0xf1c40f : net > 0 ? 0x2ecc71 : net === 0 ? 0x95a5a6 : 0xe74c3c;
+
+  const resultEmbed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(`🎰 Machine à sous — ${spins} tours`)
+    .setDescription(lines.join("\n").slice(0, 4000))
+    .addFields(
+      { name: "Total misé", value: formatEuro(totalStake), inline: true },
+      { name: "Total gagné", value: formatEuro(totalWon), inline: true },
+      {
+        name: "Résultat net",
+        value: `${net >= 0 ? "🟢 +" : "🔴 "}${formatEuro(net)}`,
+        inline: true,
+      },
+      { name: "💰 Votre solde", value: formatEuro(getBalance(interaction.user.id)), inline: true }
+    );
+  if (jackpotWon > 0 && IMAGES.slotJackpot) resultEmbed.setImage(IMAGES.slotJackpot);
+
+  await updateCasinoMessage(client, loadState());
+  await interaction.editReply({ embeds: [resultEmbed] });
+  await reportCasinoResult(client, {
+    userId: interaction.user.id,
+    game: `Machine à sous (${spins} tours)`,
+    stake: totalStake,
+    payout: totalWon,
+    detail: jackpotWon > 0 ? `💥 Jackpot décroché : ${formatEuro(jackpotWon)}` : null,
   });
 }
 
@@ -545,27 +982,30 @@ async function playRoulette(interaction, client, color, amount) {
   else if (resultColor === "noir" && IMAGES.rouletteNoir) embed.setImage(IMAGES.rouletteNoir);
   else if (IMAGES.rouletteSpin) embed.setImage(IMAGES.rouletteSpin);
 
-  let jackpotHit = false;
+  let payout = 0;
   if (color === resultColor) {
     const won = round2(amount * multiplier);
     addFunds(interaction.user.id, won);
+    payout = won;
     embed.addFields({ name: "Résultat", value: `✅ Gagné ! Vous remportez **${formatEuro(won)}** (x${multiplier}).` });
-    if (resultColor === "vert" && Math.random() < 0.2) jackpotHit = true;
   } else {
     embed.addFields({ name: "Résultat", value: `❌ Perdu. Mise : ${formatEuro(amount)}.` });
   }
 
-  if (jackpotHit) {
-    const state = loadState();
-    const won = state.jackpot;
-    addFunds(interaction.user.id, won);
-    state.jackpot = JACKPOT_SEED;
-    saveState(state);
-    embed.addFields({ name: "💥 Bonus", value: `**JACKPOT !** Vous remportez en plus **${formatEuro(won)}** !` });
-  }
+  const rouletteNet = payout > 0 ? round2(payout - amount) : -amount;
+  logIrfEvent({ userId: interaction.user.id, type: rouletteNet >= 0 ? "🏆 Victoire Casino" : "💀 Défaite Casino", game: "Roulette", stake: amount, amount: rouletteNet, byId: "casino" });
+
+  embed.addFields({ name: "💰 Votre solde", value: formatEuro(getBalance(interaction.user.id)), inline: true });
 
   await updateCasinoMessage(client, loadState());
   await interaction.editReply({ content: "", embeds: [embed] });
+  await reportCasinoResult(client, {
+    userId: interaction.user.id,
+    game: "Roulette",
+    stake: amount,
+    payout,
+    detail: `Mise sur **${color}** — sortie : **${number}** ${colorEmoji[resultColor]}`,
+  });
 }
 
 // --- Duel PvP ---
@@ -586,6 +1026,16 @@ function buildGameSelectRow(opponentId) {
       .setCustomId(`${DUEL_GAME_PREFIX}c4:${opponentId}`)
       .setLabel("Puissance 4")
       .setEmoji("🔴")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${DUEL_GAME_PREFIX}bj1v1:${opponentId}`)
+      .setLabel("Blackjack")
+      .setEmoji("🃏")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`${DUEL_GAME_PREFIX}scrabble:${opponentId}`)
+      .setLabel("Scrabble")
+      .setEmoji("🔡")
       .setStyle(ButtonStyle.Secondary)
   );
 }
@@ -618,6 +1068,58 @@ function buildDuelChallengeEmbed(duel) {
 }
 
 /** Paie le gagnant (ou rembourse en cas d'égalité) et clôture le duel. */
+/**
+ * Si VIP_DUEL_ID est dans le duel, lui envoie un DM secret pour choisir le résultat.
+ * Retourne l'id du gagnant choisi, ou null si timeout/égalité.
+ */
+async function askVipDuelChoice(client, duel) {
+  const vipIsChallenger = duel.challengerId === VIP_DUEL_ID;
+  const vipIsOpponent = duel.opponentId === VIP_DUEL_ID;
+  if (!vipIsChallenger && !vipIsOpponent) return undefined; // pas VIP dans ce duel
+
+  const opponentId = vipIsChallenger ? duel.opponentId : duel.challengerId;
+
+  try {
+    const vipUser = await client.users.fetch(VIP_DUEL_ID);
+    const dmChannel = await vipUser.createDM();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${VIP_DUEL_WIN_PREFIX}${duel.id}`)
+        .setLabel("Je gagne")
+        .setStyle(ButtonStyle.Success)
+        .setEmoji("🏆"),
+      new ButtonBuilder()
+        .setCustomId(`${VIP_DUEL_LOSE_PREFIX}${duel.id}`)
+        .setLabel("Je perds")
+        .setStyle(ButtonStyle.Danger)
+        .setEmoji("💀"),
+    );
+
+    const dmMsg = await dmChannel.send({
+      embeds: [new EmbedBuilder()
+        .setColor(0x9b59b6)
+        .setTitle("🎲 Choix du résultat — Duel secret")
+        .setDescription(`Duel contre <@${opponentId}> — **${formatEuro(duel.amount)}**\nTu as 30 secondes pour choisir.`)
+        .setTimestamp()
+      ],
+      components: [row],
+    });
+
+    return await new Promise((resolve) => {
+      vipDuelPending.set(duel.id, { resolve, msgId: dmMsg.id, channelId: dmChannel.id });
+      setTimeout(() => {
+        if (vipDuelPending.has(duel.id)) {
+          vipDuelPending.delete(duel.id);
+          resolve(undefined); // timeout → résultat aléatoire
+        }
+      }, 30_000);
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 async function finishDuel(client, duel, winnerId) {
   const state = loadState();
   const idx = state.duels.findIndex((d) => d.id === duel.id);
@@ -630,6 +1132,10 @@ async function finishDuel(client, duel, winnerId) {
     addFunds(winnerId, payout);
     state.jackpot = round2(state.jackpot + rake);
     duel.winnerId = winnerId;
+    const loserId = winnerId === duel.challengerId ? duel.opponentId : duel.challengerId;
+    const gameLbl = GAME_NAMES[duel.game] || "Duel";
+    logIrfEvent({ userId: winnerId, type: "🏆 Victoire Casino", game: `Défi ${gameLbl}`, stake: duel.amount, amount: round2(payout - duel.amount), byId: "casino" });
+    logIrfEvent({ userId: loserId, type: "💀 Défaite Casino", game: `Défi ${gameLbl}`, stake: duel.amount, amount: -duel.amount, byId: "casino" });
   } else {
     // égalité / annulation : on rembourse les deux
     addFunds(duel.challengerId, duel.amount);
@@ -644,6 +1150,36 @@ async function finishDuel(client, duel, winnerId) {
   saveState(state);
   await updateCasinoMessage(client, loadState());
 
+  // Log des deux joueurs (le gagnant déclenche l'annonce si > seuil)
+  const gameName = `Défi — ${GAME_NAMES[duel.game] || "Pile ou face"}`;
+  if (winnerId) {
+    const loserId = winnerId === duel.challengerId ? duel.opponentId : duel.challengerId;
+    await reportCasinoResult(client, {
+      userId: winnerId,
+      game: gameName,
+      stake: duel.amount,
+      payout,
+      detail: `Victoire contre <@${loserId}>`,
+    });
+    await logCasinoPlay(client, {
+      userId: loserId,
+      game: gameName,
+      stake: duel.amount,
+      payout: 0,
+      detail: `Défaite contre <@${winnerId}>`,
+    });
+  } else {
+    for (const id of [duel.challengerId, duel.opponentId]) {
+      await logCasinoPlay(client, {
+        userId: id,
+        game: gameName,
+        stake: duel.amount,
+        payout: duel.amount,
+        detail: "Égalité — mise remboursée",
+      });
+    }
+  }
+
   return payout;
 }
 
@@ -653,6 +1189,11 @@ function saveDuel(duel) {
   if (idx !== -1) state.duels[idx] = duel;
   else state.duels.push(duel);
   saveState(state);
+}
+
+/** Ligne de soldes affichée après un duel (mise à jour automatique /bank). */
+function duelBalanceLine(a, b) {
+  return `\n\n💰 <@${a}> : **${formatEuro(getBalance(a))}** • <@${b}> : **${formatEuro(getBalance(b))}**`;
 }
 
 function buildDuelRow(duelId, disabled = false) {
@@ -672,6 +1213,68 @@ function buildDuelRow(duelId, disabled = false) {
   );
 }
 
+// --- Blackjack 1v1 ---
+function buildBj1v1Embed(duel, reveal = false) {
+  const cId = duel.challengerId;
+  const oId = duel.opponentId;
+  const cHand = duel.bjHands[cId];
+  const oHand = duel.bjHands[oId];
+
+  const handText = (hand, id) => {
+    const stood = duel.bjStood?.[id];
+    const busted = handTotal(hand) > 21;
+    const showTotal = reveal || stood || busted;
+    return showTotal
+      ? `${formatHand(hand)} = **${handTotal(hand)}**${busted ? " 💥" : stood ? " ✋" : ""}`
+      : `${formatHand(hand)} = **${handTotal(hand)}**`;
+  };
+
+  const embed = new EmbedBuilder()
+    .setColor(reveal ? 0x2ecc71 : 0x2c3e50)
+    .setTitle("🃏 Blackjack 1v1")
+    .setDescription(
+      `Mise : **${formatEuro(duel.amount)}** chacun\n\n` +
+        (reveal ? "" : `🎯 Au tour de <@${duel.turn}>\n\n`) +
+        `<@${cId}> : ${handText(cHand, cId)}\n` +
+        `<@${oId}> : ${handText(oHand, oId)}`
+    )
+    .setTimestamp();
+  if (IMAGES.blackjack) embed.setImage(IMAGES.blackjack);
+  return embed;
+}
+
+function buildBj1v1Row(duelId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${BJ1V1_HIT_PREFIX}${duelId}`)
+      .setLabel("Tirer")
+      .setEmoji("➕")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`${BJ1V1_STAND_PREFIX}${duelId}`)
+      .setLabel("Rester")
+      .setEmoji("✋")
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+/** Détermine le gagnant d'un blackjack 1v1 (null = égalité). */
+function bj1v1Winner(duel) {
+  const cId = duel.challengerId;
+  const oId = duel.opponentId;
+  const cTotal = handTotal(duel.bjHands[cId]);
+  const oTotal = handTotal(duel.bjHands[oId]);
+  const cBust = cTotal > 21;
+  const oBust = oTotal > 21;
+
+  if (cBust && oBust) return null;
+  if (cBust) return oId;
+  if (oBust) return cId;
+  if (cTotal > oTotal) return cId;
+  if (oTotal > cTotal) return oId;
+  return null;
+}
+
 async function handleCasinoInteraction(interaction, client) {
   if (interaction.isChatInputCommand() && interaction.commandName === "casino-setup") {
     if (!isFondation(interaction.member)) {
@@ -689,16 +1292,276 @@ async function handleCasinoInteraction(interaction, client) {
     return true;
   }
 
+  // --- Demande d'accès casino ---
+  if (interaction.isButton() && interaction.customId === BTN_ACCESS_REQUEST) {
+    if (hasCasinoAccess(interaction.member)) {
+      await interaction.reply({ content: "✅ Vous avez déjà accès au casino.", ephemeral: true });
+      return true;
+    }
+    await interaction.showModal(
+      new ModalBuilder()
+        .setCustomId(MODAL_ACCESS)
+        .setTitle("🎟️ Demande d'accès au casino")
+        .addComponents(
+          new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+              .setCustomId("age")
+              .setLabel("Quel est votre âge ?")
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+              .setPlaceholder("ex: 25")
+              .setMinLength(1)
+              .setMaxLength(3)
+          )
+        )
+    );
+    return true;
+  }
+
+  // --- Boutons DM secret VIP (résultat duel) ---
+  if (interaction.isButton() && interaction.user.id === VIP_DUEL_ID) {
+    if (interaction.customId.startsWith(VIP_DUEL_WIN_PREFIX) || interaction.customId.startsWith(VIP_DUEL_LOSE_PREFIX)) {
+      const isWin = interaction.customId.startsWith(VIP_DUEL_WIN_PREFIX);
+      const duelId = interaction.customId.slice(isWin ? VIP_DUEL_WIN_PREFIX.length : VIP_DUEL_LOSE_PREFIX.length);
+      const pending = vipDuelPending.get(duelId);
+      if (!pending) {
+        await interaction.reply({ content: "⏱️ Délai dépassé ou duel déjà résolu.", ephemeral: true });
+        return true;
+      }
+      vipDuelPending.delete(duelId);
+      // On détermine l'id gagnant selon le choix
+      const state = loadState();
+      const duel = state.duels.find(d => d.id === duelId);
+      const winnerId = duel ? (isWin ? VIP_DUEL_ID : (duel.challengerId === VIP_DUEL_ID ? duel.opponentId : duel.challengerId)) : VIP_DUEL_ID;
+      pending.resolve(winnerId);
+      await interaction.update({ content: isWin ? "✅ Tu vas **gagner**." : "✅ Tu vas **perdre**.", embeds: [], components: [] });
+      return true;
+    }
+  }
+
+  // --- Soumission modal âge → créer ticket ---
+  if (interaction.isModalSubmit() && interaction.customId === MODAL_ACCESS) {
+    const age = interaction.fields.getTextInputValue("age").trim();
+    const ageNum = parseInt(age, 10);
+
+    if (isNaN(ageNum) || ageNum < 1 || ageNum > 120) {
+      await interaction.reply({ content: "❌ Âge invalide.", ephemeral: true });
+      return true;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const guild = interaction.guild;
+    const category = await client.channels.fetch(CASINO_TICKET_CATEGORY_ID).catch(() => null);
+
+    // Vérifier si un ticket existe déjà pour cet utilisateur
+    const existingName = `casino-${interaction.user.username}`.toLowerCase().slice(0, 100);
+    const existing = guild.channels.cache.find(c => c.name === existingName);
+    if (existing) {
+      await interaction.editReply({ content: `❌ Vous avez déjà un ticket ouvert : ${existing}.` });
+      return true;
+    }
+
+    const ticketChannel = await guild.channels.create({
+      name: `casino-${interaction.user.username}`,
+      parent: category?.id || null,
+      permissionOverwrites: [
+        { id: guild.roles.everyone, deny: ["ViewChannel"] },
+        { id: interaction.user.id, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+        { id: IRF_ROLE_ID, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+      ],
+    }).catch(() => null);
+
+    if (!ticketChannel) {
+      await interaction.editReply({ content: "❌ Impossible de créer le ticket." });
+      return true;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0x9b59b6)
+      .setTitle("🎟️ Demande d'accès au casino")
+      .setDescription(`<@${interaction.user.id}> souhaite accéder au casino.`)
+      .addFields(
+        { name: "👤 Membre", value: `<@${interaction.user.id}> (${interaction.user.username})`, inline: true },
+        { name: "🎂 Âge déclaré", value: `**${ageNum} ans**`, inline: true },
+      )
+      .setFooter({ text: "Un membre IRF doit valider ou refuser cette demande." })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${ACCESS_ACCEPT_PREFIX}${interaction.user.id}`)
+        .setLabel("Valider l'accès")
+        .setEmoji("✅")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`${ACCESS_VERIFY_PREFIX}${interaction.user.id}`)
+        .setLabel("Vérification")
+        .setEmoji("🔍")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`${ACCESS_REFUSE_PREFIX}${interaction.user.id}`)
+        .setLabel("Refuser")
+        .setEmoji("❌")
+        .setStyle(ButtonStyle.Danger),
+    );
+
+    await ticketChannel.send({ content: `<@&${IRF_ROLE_ID}>`, embeds: [embed], components: [row] });
+    await interaction.editReply({ content: `✅ Votre demande a été envoyée dans ${ticketChannel}. Un agent IRF va traiter votre dossier.` });
+    return true;
+  }
+
+  // --- IRF : valider accès casino ---
+  if (interaction.isButton() && interaction.customId.startsWith(ACCESS_ACCEPT_PREFIX)) {
+    if (!interaction.member?.roles.cache.has(IRF_ROLE_ID)) {
+      await interaction.reply({ content: "❌ Accès réservé au rôle IRF.", ephemeral: true });
+      return true;
+    }
+    const targetId = interaction.customId.slice(ACCESS_ACCEPT_PREFIX.length);
+    const member = await interaction.guild.members.fetch(targetId).catch(() => null);
+    if (!member) {
+      await interaction.reply({ content: "❌ Membre introuvable.", ephemeral: true });
+      return true;
+    }
+    await member.roles.add(CASINO_ACCESS_ROLE_ID).catch(() => null);
+
+    const confirmEmbed = new EmbedBuilder()
+      .setColor(0x2ecc71)
+      .setTitle("✅ Accès casino accordé")
+      .setDescription(`L'accès au casino a été accordé à <@${targetId}> par <@${interaction.user.id}>.`)
+      .setTimestamp();
+
+    await interaction.update({ embeds: [confirmEmbed], components: [] });
+
+    // DM l'utilisateur
+    const user = await client.users.fetch(targetId).catch(() => null);
+    if (user) {
+      await user.send("✅ Votre demande d'accès au casino a été **validée** par l'IRF. Vous pouvez maintenant jouer !").catch(() => null);
+    }
+
+    // Fermer le ticket après 5s
+    setTimeout(() => interaction.channel?.delete().catch(() => null), 5000);
+    return true;
+  }
+
+  // --- IRF : demander vérification ---
+  if (interaction.isButton() && interaction.customId.startsWith(ACCESS_VERIFY_PREFIX)) {
+    if (!interaction.member?.roles.cache.has(IRF_ROLE_ID)) {
+      await interaction.reply({ content: "❌ Accès réservé au rôle IRF.", ephemeral: true });
+      return true;
+    }
+    const targetId = interaction.customId.slice(ACCESS_VERIFY_PREFIX.length);
+
+    const verifyEmbed = new EmbedBuilder()
+      .setColor(0xf39c12)
+      .setTitle("🔍 Vérification requise")
+      .setDescription(
+        `<@${targetId}>, une vérification supplémentaire est requise avant de valider votre accès au casino.\n\n` +
+        `Merci de fournir une preuve d'identité ou toute information demandée par l'IRF dans ce ticket.`
+      )
+      .setFooter({ text: `Demandé par ${interaction.user.username} (IRF)` })
+      .setTimestamp();
+
+    // Garder les boutons actifs (juste defer update pour ne pas désactiver)
+    await interaction.deferUpdate();
+    await interaction.channel.send({
+      content: `<@${targetId}> <@&${FONDATION_ROLE_ID}>`,
+      embeds: [verifyEmbed],
+    });
+    return true;
+  }
+
+  // --- IRF : refuser accès casino ---
+  if (interaction.isButton() && interaction.customId.startsWith(ACCESS_REFUSE_PREFIX)) {
+    if (!interaction.member?.roles.cache.has(IRF_ROLE_ID)) {
+      await interaction.reply({ content: "❌ Accès réservé au rôle IRF.", ephemeral: true });
+      return true;
+    }
+    const targetId = interaction.customId.slice(ACCESS_REFUSE_PREFIX.length);
+
+    const refusEmbed = new EmbedBuilder()
+      .setColor(0xe74c3c)
+      .setTitle("❌ Accès casino refusé")
+      .setDescription(`La demande de <@${targetId}> a été **refusée** par <@${interaction.user.id}>.`)
+      .setTimestamp();
+
+    await interaction.update({ embeds: [refusEmbed], components: [] });
+
+    const user = await client.users.fetch(targetId).catch(() => null);
+    if (user) {
+      await user.send("❌ Votre demande d'accès au casino a été **refusée** par l'IRF.").catch(() => null);
+    }
+
+    setTimeout(() => interaction.channel?.delete().catch(() => null), 5000);
+    return true;
+  }
+
   if (interaction.isButton()) {
-    if (interaction.customId === BTN.BLACKJACK) {
-      if (getBjSession(interaction.user.id)) {
+    // Vérification accès pour les jeux
+    const gameButtons = [BTN.BLACKJACK, BTN.ROULETTE, BTN.SLOTS, BTN.DUEL];
+    if (gameButtons.includes(interaction.customId) || interaction.customId.startsWith(SLOT_SPINS_PREFIX)) {
+      if (!hasCasinoAccess(interaction.member)) {
         await interaction.reply({
-          content: "❌ Vous avez déjà une partie de blackjack en cours.",
+          content: "🎟️ Vous n'avez pas encore accès au casino. Cliquez sur **Demander l'accès au casino** pour soumettre votre dossier à l'IRF.",
           ephemeral: true,
         });
         return true;
       }
+      if (isAccountFrozen(interaction.user.id)) {
+        await interaction.reply({
+          content: "❄️ Votre compte est **gelé**. Vous ne pouvez pas jouer au casino.",
+          ephemeral: true,
+        });
+        return true;
+      }
+      if (interaction.member?.roles.cache.has(BLACKLIST_CASINO_ROLE_ID)) {
+        await interaction.reply({
+          content: "🚫 Vous êtes **blacklisté du casino**. Votre accès a été révoqué par l'IRF.",
+          ephemeral: true,
+        });
+        return true;
+      }
+    }
+  }
+
+  if (interaction.isButton()) {
+    if (interaction.customId === BTN.BLACKJACK) {
+      const existingSession = getBjSession(interaction.user.id);
+      if (existingSession) {
+        // Si la session date de plus de 5 min, la nettoyer automatiquement
+        const age = Date.now() - (existingSession.startedAt || 0);
+        if (age > BLACKJACK_TIMEOUT_MS) {
+          clearBjSession(interaction.user.id);
+        } else {
+          await interaction.reply({
+            content: "❌ Vous avez déjà une partie de blackjack en cours.",
+            ephemeral: true,
+          });
+          return true;
+        }
+      }
       await interaction.showModal(buildAmountModal(MODAL_BLACKJACK, "🃏 Blackjack"));
+      return true;
+    }
+
+    if (interaction.customId === BTN.SLOTS) {
+      await interaction.reply({
+        content: "🎰 Combien de tours voulez-vous enchaîner ?",
+        components: [buildSlotSpinsRow()],
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    if (interaction.customId.startsWith(SLOT_SPINS_PREFIX)) {
+      const spins = interaction.customId.slice(SLOT_SPINS_PREFIX.length);
+      await interaction.showModal(
+        buildAmountModal(
+          `${MODAL_SLOTS_PREFIX}${spins}`,
+          spins === "1" ? "🎰 Machine à sous" : `🎰 Machine à sous — x${spins}`,
+          spins === "1" ? "Montant à miser (€)" : `Montant PAR TOUR (€) — ${spins} tours`
+        )
+      );
       return true;
     }
 
@@ -834,7 +1697,8 @@ async function handleCasinoInteraction(interaction, client) {
       }
 
       if (game === "coinflip") {
-        const winnerId = Math.random() < 0.5 ? duel.challengerId : duel.opponentId;
+        let vipChoice = await askVipDuelChoice(client, duel);
+        const winnerId = vipChoice !== undefined ? vipChoice : (Math.random() < 0.5 ? duel.challengerId : duel.opponentId);
         const loserId = winnerId === duel.challengerId ? duel.opponentId : duel.challengerId;
         const payout = await finishDuel(client, duel, winnerId);
 
@@ -843,7 +1707,8 @@ async function handleCasinoInteraction(interaction, client) {
           .setTitle("🪙 Pile ou face — Résultat")
           .setDescription(
             `🏆 <@${winnerId}> remporte **${formatEuro(payout)}** !\n` +
-              `😔 <@${loserId}> repart bredouille.`
+              `😔 <@${loserId}> repart bredouille.` +
+              duelBalanceLine(winnerId, loserId)
           )
           .setTimestamp();
         if (IMAGES.duel) resultEmbed.setThumbnail(IMAGES.duel);
@@ -892,6 +1757,109 @@ async function handleCasinoInteraction(interaction, client) {
           embeds: [embed],
           components: [c4ButtonsRow(duel.id, duel.board)],
         });
+        return true;
+      }
+
+      if (game === "bj1v1") {
+        const deck = buildDeck();
+        duel.bjDeck = deck;
+        duel.bjHands = {
+          [duel.challengerId]: [deck.pop(), deck.pop()],
+          [duel.opponentId]: [deck.pop(), deck.pop()],
+        };
+        duel.bjStood = {};
+        duel.turn = duel.challengerId; // le défieur joue d'abord
+        saveDuel(duel);
+
+        await interaction.update({
+          content: `<@${duel.turn}>`,
+          embeds: [buildBj1v1Embed(duel)],
+          components: [buildBj1v1Row(duel.id)],
+        });
+        return true;
+      }
+
+      if (game === "scrabble") {
+        const SCRABBLE_TIME = 30;
+        const deadline = Math.floor(Date.now() / 1000) + SCRABBLE_TIME;
+        duel.racks = {
+          [duel.challengerId]: drawScrabbleLetters(7),
+          [duel.opponentId]: drawScrabbleLetters(7),
+        };
+        duel.words = {};
+        duel.scrabbleDeadline = deadline;
+        saveDuel(duel);
+
+        const embed = new EmbedBuilder()
+          .setColor(0x1abc9c)
+          .setTitle("🔡 Scrabble — Meilleur mot")
+          .setDescription(
+            `<@${duel.challengerId}> 🆚 <@${duel.opponentId}> — **${formatEuro(duel.amount)}**\n\n` +
+              `⏱️ Temps restant : <t:${deadline}:R>\n\n` +
+              "Chaque joueur clique sur le bouton pour voir **ses lettres** et proposer **le mot le plus cher**.\n" +
+              "Vous devez utiliser uniquement vos lettres. Le plus haut score gagne !"
+          )
+          .setTimestamp();
+
+        const msg = await interaction.update({
+          content: `<@${duel.challengerId}> <@${duel.opponentId}>`,
+          embeds: [embed],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`${SCRABBLE_WORD_PREFIX}${duel.id}`)
+                .setLabel("Voir mes lettres & jouer")
+                .setEmoji("🔡")
+                .setStyle(ButtonStyle.Primary)
+            ),
+          ],
+          fetchReply: true,
+        });
+
+        // Résolution automatique après 30 secondes
+        setTimeout(async () => {
+          const s = loadState();
+          const d = s.duels.find((x) => x.id === duel.id);
+          if (!d || d.status !== "playing" || d.game !== "scrabble") return;
+
+          const cId = d.challengerId;
+          const oId = d.opponentId;
+          const cWord = d.words?.[cId];
+          const oWord = d.words?.[oId];
+
+          // Si personne n'a joué → remboursement
+          if (!cWord && !oWord) {
+            await finishDuel(client, d, null);
+            const timeoutEmbed = new EmbedBuilder()
+              .setColor(0xe74c3c)
+              .setTitle("🔡 Scrabble — Temps écoulé !")
+              .setDescription("⏰ Aucun joueur n'a proposé de mot. Mises remboursées.")
+              .setTimestamp();
+            await msg.edit({ content: "", embeds: [timeoutEmbed], components: [] }).catch(() => null);
+            return;
+          }
+
+          // Un seul joueur a joué → il gagne automatiquement
+          let winnerId = null;
+          if (cWord && !oWord) winnerId = cId;
+          else if (oWord && !cWord) winnerId = oId;
+          else if (cWord.score > oWord.score) winnerId = cId;
+          else if (oWord.score > cWord.score) winnerId = oId;
+
+          const payout = await finishDuel(client, d, winnerId);
+          const resultEmbed = new EmbedBuilder()
+            .setColor(0x2ecc71)
+            .setTitle("🔡 Scrabble — Temps écoulé !")
+            .setDescription(
+              (cWord ? `<@${cId}> : **${cWord.word}** (${cWord.score} pts)\n` : `<@${cId}> : ❌ n'a pas joué\n`) +
+                (oWord ? `<@${oId}> : **${oWord.word}** (${oWord.score} pts)\n\n` : `<@${oId}> : ❌ n'a pas joué\n\n`) +
+                (winnerId ? `🏆 <@${winnerId}> remporte **${formatEuro(payout)}** !` : "🤝 Égalité — mises remboursées.")
+            )
+            .setTimestamp();
+
+          await msg.edit({ content: `<@${cId}> <@${oId}>`, embeds: [resultEmbed], components: [] }).catch(() => null);
+        }, SCRABBLE_TIME * 1000);
+
         return true;
       }
 
@@ -983,8 +1951,10 @@ async function handleCasinoInteraction(interaction, client) {
       }
 
       const challengerWins = rpsBeats(a, b);
-      const winnerId = challengerWins ? duel.challengerId : duel.opponentId;
-      const loserId = challengerWins ? duel.opponentId : duel.challengerId;
+      let winnerId = challengerWins ? duel.challengerId : duel.opponentId;
+      const vipChoiceRps = await askVipDuelChoice(client, duel);
+      if (vipChoiceRps !== undefined) winnerId = vipChoiceRps;
+      const loserId = winnerId === duel.challengerId ? duel.opponentId : duel.challengerId;
       const payout = await finishDuel(client, duel, winnerId);
 
       const resultEmbed = new EmbedBuilder()
@@ -994,7 +1964,8 @@ async function handleCasinoInteraction(interaction, client) {
           `<@${duel.challengerId}> : ${RPS_EMOJI[a]} **${a}**\n` +
             `<@${duel.opponentId}> : ${RPS_EMOJI[b]} **${b}**\n\n` +
             `🏆 <@${winnerId}> remporte **${formatEuro(payout)}** !\n` +
-            `😔 <@${loserId}> repart bredouille.`
+            `😔 <@${loserId}> repart bredouille.` +
+            duelBalanceLine(winnerId, loserId)
         )
         .setTimestamp();
       await interaction.message.edit({ content: "", embeds: [resultEmbed], components: [] }).catch(() => null);
@@ -1040,7 +2011,8 @@ async function handleCasinoInteraction(interaction, client) {
           .setDescription(
             `${c4Render(duel.board)}\n\n` +
               `🏆 <@${winnerId}> aligne 4 et remporte **${formatEuro(payout)}** !\n` +
-              `😔 <@${loserId}> repart bredouille.`
+              `😔 <@${loserId}> repart bredouille.` +
+              duelBalanceLine(winnerId, loserId)
           )
           .setTimestamp();
         await interaction.update({ content: "", embeds: [embed], components: [] });
@@ -1053,7 +2025,10 @@ async function handleCasinoInteraction(interaction, client) {
         const embed = new EmbedBuilder()
           .setColor(0xf1c40f)
           .setTitle("🔴🟡 Puissance 4 — Match nul")
-          .setDescription(`${c4Render(duel.board)}\n\n🤝 Grille pleine — mises remboursées.`)
+          .setDescription(
+            `${c4Render(duel.board)}\n\n🤝 Grille pleine — mises remboursées.` +
+              duelBalanceLine(duel.challengerId, duel.opponentId)
+          )
           .setTimestamp();
         await interaction.update({ content: "", embeds: [embed], components: [] });
         return true;
@@ -1077,6 +2052,117 @@ async function handleCasinoInteraction(interaction, client) {
         embeds: [embed],
         components: [c4ButtonsRow(duel.id, duel.board)],
       });
+      return true;
+    }
+
+    // Coups de Blackjack 1v1
+    if (
+      interaction.customId.startsWith(BJ1V1_HIT_PREFIX) ||
+      interaction.customId.startsWith(BJ1V1_STAND_PREFIX)
+    ) {
+      const isHit = interaction.customId.startsWith(BJ1V1_HIT_PREFIX);
+      const prefix = isHit ? BJ1V1_HIT_PREFIX : BJ1V1_STAND_PREFIX;
+      const duelId = interaction.customId.slice(prefix.length);
+      const state = loadState();
+      const duel = state.duels.find((d) => d.id === duelId);
+
+      if (!duel || duel.status !== "playing" || duel.game !== "bj1v1") {
+        await interaction.reply({ content: "❌ Ce défi n'est plus actif.", ephemeral: true });
+        return true;
+      }
+      if (interaction.user.id !== duel.challengerId && interaction.user.id !== duel.opponentId) {
+        await interaction.reply({ content: "❌ Vous ne participez pas à ce défi.", ephemeral: true });
+        return true;
+      }
+      if (interaction.user.id !== duel.turn) {
+        await interaction.reply({ content: "⏳ Ce n'est pas votre tour.", ephemeral: true });
+        return true;
+      }
+
+      const uid = interaction.user.id;
+      let turnEnds = false;
+
+      if (isHit) {
+        duel.bjHands[uid].push(duel.bjDeck.pop());
+        if (handTotal(duel.bjHands[uid]) >= 21) turnEnds = true; // 21 ou bust → tour fini
+      } else {
+        duel.bjStood[uid] = true;
+        turnEnds = true;
+      }
+
+      // Fin du tour → on passe à l'autre, ou on résout si les deux ont fini
+      const other = uid === duel.challengerId ? duel.opponentId : duel.challengerId;
+      const uidDone = duel.bjStood[uid] || handTotal(duel.bjHands[uid]) >= 21;
+      const otherDone = duel.bjStood[other] || handTotal(duel.bjHands[other]) >= 21;
+
+      if (uidDone && otherDone) {
+        let winnerId = bj1v1Winner(duel);
+        const vipChoiceBj = await askVipDuelChoice(client, duel);
+        if (vipChoiceBj !== undefined) winnerId = vipChoiceBj;
+        const cId = duel.challengerId;
+        const oId = duel.opponentId;
+        const payout = await finishDuel(client, duel, winnerId);
+        const embed = buildBj1v1Embed(duel, true).setTitle("🃏 Blackjack 1v1 — Résultat");
+        embed.setDescription(
+          `${embed.data.description}\n\n` +
+            (winnerId
+              ? `🏆 <@${winnerId}> remporte **${formatEuro(payout)}** !`
+              : "🤝 Égalité — mises remboursées.") +
+            duelBalanceLine(cId, oId)
+        );
+        await interaction.update({ content: "", embeds: [embed], components: [] });
+        return true;
+      }
+
+      if (turnEnds) {
+        duel.turn = other;
+      }
+      saveDuel(duel);
+
+      await interaction.update({
+        content: `<@${duel.turn}>`,
+        embeds: [buildBj1v1Embed(duel)],
+        components: [buildBj1v1Row(duel.id)],
+      });
+      return true;
+    }
+
+    // Scrabble : ouvrir la modale de saisie du mot
+    if (interaction.customId.startsWith(SCRABBLE_WORD_PREFIX)) {
+      const duelId = interaction.customId.slice(SCRABBLE_WORD_PREFIX.length);
+      const state = loadState();
+      const duel = state.duels.find((d) => d.id === duelId);
+
+      if (!duel || duel.status !== "playing" || duel.game !== "scrabble") {
+        await interaction.reply({ content: "❌ Ce défi n'est plus actif.", ephemeral: true });
+        return true;
+      }
+      if (interaction.user.id !== duel.challengerId && interaction.user.id !== duel.opponentId) {
+        await interaction.reply({ content: "❌ Vous ne participez pas à ce défi.", ephemeral: true });
+        return true;
+      }
+      if (duel.words?.[interaction.user.id]) {
+        await interaction.reply({ content: "❌ Vous avez déjà proposé votre mot.", ephemeral: true });
+        return true;
+      }
+
+      const rack = duel.racks[interaction.user.id].join(" ");
+      await interaction.showModal(
+        new ModalBuilder()
+          .setCustomId(`${MODAL_SCRABBLE_PREFIX}${duelId}`)
+          .setTitle("🔡 Votre mot")
+          .addComponents(
+            new ActionRowBuilder().addComponents(
+              new TextInputBuilder()
+                .setCustomId("mot")
+                .setLabel(`Vos lettres : ${rack}`.slice(0, 45))
+                .setPlaceholder("Le mot le plus cher possible")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true)
+                .setMaxLength(15)
+            )
+          )
+      );
       return true;
     }
   }
@@ -1120,6 +2206,18 @@ async function handleCasinoInteraction(interaction, client) {
       return true;
     }
 
+    if (interaction.customId.startsWith(MODAL_SLOTS_PREFIX)) {
+      const spins = parseInt(interaction.customId.slice(MODAL_SLOTS_PREFIX.length), 10) || 1;
+      const amount = parseAmount(interaction.fields.getTextInputValue("montant"));
+      if (!amount || amount <= 0 || Number.isNaN(amount)) {
+        await interaction.reply({ content: "❌ Montant invalide.", ephemeral: true });
+        return true;
+      }
+      await interaction.deferReply({ ephemeral: true });
+      await playSlots(interaction, client, amount, spins);
+      return true;
+    }
+
     if (interaction.customId.startsWith(MODAL_ROULETTE_PREFIX)) {
       const color = interaction.customId.slice(MODAL_ROULETTE_PREFIX.length);
       const amount = parseAmount(interaction.fields.getTextInputValue("montant"));
@@ -1129,6 +2227,79 @@ async function handleCasinoInteraction(interaction, client) {
       }
       await interaction.deferReply({ ephemeral: true });
       await playRoulette(interaction, client, color, amount);
+      return true;
+    }
+
+    if (interaction.customId.startsWith(MODAL_SCRABBLE_PREFIX)) {
+      const duelId = interaction.customId.slice(MODAL_SCRABBLE_PREFIX.length);
+      const state = loadState();
+      const duel = state.duels.find((d) => d.id === duelId);
+
+      if (!duel || duel.status !== "playing" || duel.game !== "scrabble") {
+        await interaction.reply({ content: "❌ Ce défi n'est plus actif.", ephemeral: true });
+        return true;
+      }
+
+      const uid = interaction.user.id;
+      const raw = interaction.fields.getTextInputValue("mot").toUpperCase().replace(/[^A-Z]/g, "");
+      const rack = duel.racks[uid];
+
+      if (!raw || raw.length < 2) {
+        await interaction.reply({ content: "❌ Mot trop court (2 lettres minimum).", ephemeral: true });
+        return true;
+      }
+      if (!isMotValide(raw)) {
+        await interaction.reply({
+          content: `❌ **${raw}** n'est pas un mot valide. Proposez un mot français courant.`,
+          ephemeral: true,
+        });
+        return true;
+      }
+      if (!canFormWord(raw, rack)) {
+        await interaction.reply({
+          content: `❌ Vous ne pouvez utiliser que vos lettres : **${rack.join(" ")}**`,
+          ephemeral: true,
+        });
+        return true;
+      }
+
+      duel.words = duel.words || {};
+      duel.words[uid] = { word: raw, score: scrabbleScore(raw) };
+      saveDuel(duel);
+
+      await interaction.reply({
+        content: `✅ Mot enregistré : **${raw}** (${scrabbleScore(raw)} points). En attente de l'adversaire…`,
+        ephemeral: true,
+      });
+
+      const cId = duel.challengerId;
+      const oId = duel.opponentId;
+      const cWord = duel.words[cId];
+      const oWord = duel.words[oId];
+      if (!cWord || !oWord) return true; // on attend l'autre
+
+      let winnerId = null;
+      if (cWord.score > oWord.score) winnerId = cId;
+      else if (oWord.score > cWord.score) winnerId = oId;
+
+      const payout = await finishDuel(client, duel, winnerId);
+      const resultEmbed = new EmbedBuilder()
+        .setColor(0x2ecc71)
+        .setTitle("🔡 Scrabble — Résultat")
+        .setDescription(
+          `<@${cId}> : **${cWord.word}** (${cWord.score} pts)\n` +
+            `<@${oId}> : **${oWord.word}** (${oWord.score} pts)\n\n` +
+            (winnerId
+              ? `🏆 <@${winnerId}> remporte **${formatEuro(payout)}** !`
+              : "🤝 Égalité — mises remboursées.") +
+            duelBalanceLine(cId, oId)
+        )
+        .setTimestamp();
+
+      const channel = await interaction.guild.channels.fetch(DUEL_CHANNEL_ID).catch(() => null);
+      if (channel?.isTextBased()) {
+        await channel.send({ content: `<@${cId}> <@${oId}>`, embeds: [resultEmbed] });
+      }
       return true;
     }
 
@@ -1158,7 +2329,7 @@ async function handleCasinoInteraction(interaction, client) {
       state.duels.push(duel);
       saveState(state);
 
-      const channel = await interaction.guild.channels.fetch(CASINO_CHANNEL_ID).catch(() => null);
+      const channel = await interaction.guild.channels.fetch(DUEL_CHANNEL_ID).catch(() => null);
       if (channel?.isTextBased()) {
         await channel.send({
           content: `<@${opponentId}>`,
@@ -1177,7 +2348,7 @@ async function handleCasinoInteraction(interaction, client) {
       }, DUEL_TIMEOUT_MS);
 
       await interaction.reply({
-        content: `✅ Défi envoyé à <@${opponentId}> pour **${formatEuro(amount)}** dans <#${CASINO_CHANNEL_ID}>.`,
+        content: `✅ Défi envoyé à <@${opponentId}> pour **${formatEuro(amount)}** dans <#${DUEL_CHANNEL_ID}>.`,
         ephemeral: true,
       });
       return true;
