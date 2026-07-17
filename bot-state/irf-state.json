@@ -2,6 +2,13 @@
   "messageId": "1527540905911914617",
   "transactions": [
     {
+      "userId": "1390507432555581583",
+      "type": "💸 Amende (Fraude ( Gain Impossible , Glitch/Triche/Use bug) Raison pas expliquer.)",
+      "amount": -25000,
+      "byId": "1390508824846139453",
+      "at": 1784310110862
+    },
+    {
       "byId": "casino",
       "at": 1784310049286,
       "userId": "1411724649036910673",
