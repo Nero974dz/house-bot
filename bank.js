@@ -378,8 +378,7 @@ async function handleBankInteraction(interaction, client) {
       )
       .addFields(
         { name: "Montant à envoyer", value: `**${formatEuro(amount)}**`, inline: true },
-        { name: "Vous recevrez", value: `**${formatEuro(net)}**`, inline: true },
-        { name: "Taxe (5%)", value: formatEuro(tax), inline: true },
+        { name: "Vous recevrez", value: `**${formatEuro(amount)}**`, inline: true },
       )
       .setFooter({ text: `Réf. ${requestId}` })
       .setTimestamp();
@@ -508,10 +507,9 @@ async function handleBankInteraction(interaction, client) {
       return true;
     }
 
-    const { gross, tax, net } = applyDepositTax(request.amount);
-    addFunds(request.userId, net);
-    collectTax(tax, "dépôt", request.userId);
-    logIrfDeposit(request.userId, gross, net, interaction.user.id);
+    const gross = round2(request.amount);
+    addFunds(request.userId, gross);
+    logIrfDeposit(request.userId, gross, gross, interaction.user.id);
 
     request.status = "accepted";
     request.validatedAt = Date.now();
@@ -522,8 +520,8 @@ async function handleBankInteraction(interaction, client) {
       type: "🏦 Dépôt validé (/deposit)",
       to: request.userId,
       gross,
-      tax,
-      net,
+      tax: 0,
+      net: gross,
     });
 
     const embed = new EmbedBuilder()
@@ -532,9 +530,7 @@ async function handleBankInteraction(interaction, client) {
       .addFields(
         { name: "Membre", value: `<@${request.userId}>`, inline: true },
         { name: "Validé par", value: `${interaction.user}`, inline: true },
-        { name: "Montant", value: formatEuro(gross), inline: true },
-        { name: `Taxe (5%)`, value: formatEuro(tax), inline: true },
-        { name: "Crédité", value: `**${formatEuro(net)}**`, inline: true },
+        { name: "Montant crédité", value: `**${formatEuro(gross)}**`, inline: true },
       )
       .setTimestamp();
 
