@@ -735,7 +735,7 @@
       "opponentId": "1411724649036910673",
       "amount": 950,
       "game": "bj1v1",
-      "status": "playing",
+      "status": "resolved",
       "createdAt": 1784316350498,
       "bjDeck": [
         {
@@ -954,9 +954,12 @@
         ]
       },
       "bjStood": {
-        "320348102055690241": true
+        "320348102055690241": true,
+        "1411724649036910673": true
       },
-      "turn": "1411724649036910673"
+      "turn": "1411724649036910673",
+      "winnerId": null,
+      "resolvedAt": 1784316366926
     }
   ],
   "blackjack": {}
