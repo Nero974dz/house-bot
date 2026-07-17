@@ -2,6 +2,13 @@
   "messageId": "1527540905911914617",
   "transactions": [
     {
+      "userId": "1521795564449173524",
+      "type": "💸 Amende (Fraude ( Prend quelqu'un qui n'a pas passer la vérification casino sous prétexte que la personne n'a pas envie de jouer ))",
+      "amount": -1500,
+      "byId": "1390508824846139453",
+      "at": 1784302588913
+    },
+    {
       "byId": "casino",
       "at": 1784302125926,
       "userId": "1411724649036910673",
