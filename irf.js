@@ -26,7 +26,12 @@ const BTN_DEGELER = "irf_degeler";
 const BTN_TRANSACTIONS = "irf_transactions";
 const BTN_AMENDE = "irf_amende";
 const BTN_AIDE = "irf_aide";
-const BTN_TRESORERIE = "irf_tresorerie";
+const BTN_TRESORERIE  = "irf_tresorerie";
+const BTN_LICENCES    = "irf_licences";
+const BTN_ENQUETE     = "irf_enquete";
+const SELECT_ENQUETE  = "irf_select_enquete";
+const ENQUETE_CLOSE_PREFIX = "irf_enquete_close_";
+const LICENSE_ROLE_ID = "1527364017583030503";
 const SELECT_GELER = "irf_select_geler";
 const SELECT_DEGELER = "irf_select_degeler";
 const SELECT_TRANSACTIONS = "irf_select_tx";
@@ -103,7 +108,9 @@ function buildIrfPanelEmbed() {
       "**🔓 Dégeler** — Débloquer un compte\n" +
       "**📋 Transactions** — Historique d'un membre\n" +
       "**💸 Amende** — Infliger une amende financière\n" +
-      "**🏛️ Trésorerie** — Taxes & flux casino"
+      "**🏛️ Trésorerie** — Taxes & flux casino\n" +
+      "**🪪 Licences** — Membres ayant acheté une licence\n" +
+      "**🔎 Enquête** — Ouvrir un ticket d'enquête avec 2 membres"
     )
     .setFooter({ text: "Accès réservé au rôle IRF" })
     .setTimestamp();
@@ -120,6 +127,8 @@ function buildIrfPanelComponents() {
       new ButtonBuilder().setCustomId(BTN_TRANSACTIONS).setLabel("Transactions").setEmoji("📋").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(BTN_AMENDE).setLabel("Amende").setEmoji("💸").setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId(BTN_TRESORERIE).setLabel("Trésorerie").setEmoji("🏛️").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(BTN_LICENCES).setLabel("Licences").setEmoji("🪪").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(BTN_ENQUETE).setLabel("Enquête").setEmoji("🔎").setStyle(ButtonStyle.Danger),
     ),
   ];
 }
@@ -275,6 +284,30 @@ async function handleIrfInteraction(interaction, client) {
 
   if (!isIRF(interaction.member)) {
     await interaction.reply({ content: "❌ Accès réservé au rôle IRF.", ephemeral: true });
+    return true;
+  }
+
+  // --- Bouton : licences ---
+  if (customId === BTN_LICENCES) {
+    await interaction.deferReply({ ephemeral: true });
+    await interaction.guild.members.fetch().catch(() => null);
+    const membres = interaction.guild.members.cache.filter(m => m.roles.cache.has(LICENSE_ROLE_ID));
+
+    if (membres.size === 0) {
+      await interaction.editReply({ content: "ℹ️ Aucun membre n'a encore acheté de licence." });
+      return true;
+    }
+
+    const { getBalance, formatEuro: fe } = require("./bank");
+    const lines = membres.map(m => `• **${m.user.username}** — Solde : ${fe(getBalance(m.id))}`);
+
+    const embed = new EmbedBuilder()
+      .setColor(0x9b59b6)
+      .setTitle(`🪪 Licences achetées — ${membres.size} membre${membres.size > 1 ? "s" : ""}`)
+      .setDescription(lines.join("\n"))
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed] });
     return true;
   }
 
@@ -550,6 +583,106 @@ async function handleIrfInteraction(interaction, client) {
       content: `✅ Aide de **${formatEuro(amount)}** attribuée à <@${targetId}>.\nMotif : *${motif}*`,
       ephemeral: true,
     });
+    return true;
+  }
+
+  // --- Bouton : enquête ---
+  if (customId === BTN_ENQUETE) {
+    await interaction.reply({
+      content: "🔎 Sélectionnez les **2 membres** à convoquer pour l'enquête :",
+      components: [new ActionRowBuilder().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId(SELECT_ENQUETE)
+          .setPlaceholder("Sélectionner 2 membres")
+          .setMinValues(1)
+          .setMaxValues(2)
+      )],
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  // --- Select membres enquête → créer ticket ---
+  if (customId === SELECT_ENQUETE) {
+    const membres = [...interaction.users.values()];
+    if (membres.length === 0) {
+      await interaction.update({ content: "❌ Aucun membre sélectionné.", components: [] });
+      return true;
+    }
+
+    await interaction.deferUpdate();
+
+    const guild = interaction.guild;
+    const irfChannel = await client.channels.fetch(IRF_CHANNEL_ID).catch(() => null);
+    const categoryId = irfChannel?.parentId || null;
+
+    const permOverwrites = [
+      { id: guild.roles.everyone, deny: ["ViewChannel"] },
+      { id: IRF_ROLE_ID, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+      { id: interaction.user.id, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+      ...membres.map(m => ({ id: m.id, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] })),
+    ];
+
+    const nomTicket = `enquete-${membres.map(m => m.username.slice(0, 10)).join("-")}`.toLowerCase().slice(0, 100);
+
+    const ticket = await guild.channels.create({
+      name: nomTicket,
+      parent: categoryId,
+      permissionOverwrites: permOverwrites,
+    }).catch(() => null);
+
+    if (!ticket) {
+      await interaction.editReply({ content: "❌ Impossible de créer le ticket.", components: [] });
+      return true;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0xe74c3c)
+      .setTitle("🔎 Enquête IRF")
+      .setDescription(
+        "Ce salon est confidentiel. Les membres convoqués sont tenus de répondre aux questions posées par l'IRF.\n\n" +
+        "Toute information partagée dans ce salon est strictement confidentielle."
+      )
+      .addFields(
+        { name: "👮 Agent IRF", value: `<@${interaction.user.id}>`, inline: true },
+        { name: "👥 Membres convoqués", value: membres.map(m => `<@${m.id}>`).join("\n"), inline: true },
+      )
+      .setFooter({ text: "Enquête ouverte par l'IRF" })
+      .setTimestamp();
+
+    const closeRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${ENQUETE_CLOSE_PREFIX}${ticket.id}`)
+        .setLabel("Clôturer l'enquête")
+        .setEmoji("🔒")
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    await ticket.send({
+      content: membres.map(m => `<@${m.id}>`).join(" "),
+      embeds: [embed],
+      components: [closeRow],
+    });
+
+    await interaction.editReply({ content: `✅ Ticket d'enquête créé : ${ticket}`, components: [] });
+    return true;
+  }
+
+  // --- Clôturer enquête ---
+  if (customId.startsWith(ENQUETE_CLOSE_PREFIX)) {
+    if (!isIRF(interaction.member)) {
+      await interaction.reply({ content: "❌ Réservé au rôle IRF.", ephemeral: true });
+      return true;
+    }
+
+    const closeEmbed = new EmbedBuilder()
+      .setColor(0x95a5a6)
+      .setTitle("🔒 Enquête clôturée")
+      .setDescription(`L'enquête a été clôturée par <@${interaction.user.id}>.\nCe salon sera supprimé dans 10 secondes.`)
+      .setTimestamp();
+
+    await interaction.update({ embeds: [closeEmbed], components: [] });
+    setTimeout(() => interaction.channel?.delete().catch(() => null), 10000);
     return true;
   }
 
