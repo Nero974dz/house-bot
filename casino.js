@@ -440,7 +440,28 @@ async function updateCasinoMessage(client, state) {
 }
 
 async function setupCasinoPanel(client) {
+  // Nettoyer les sessions blackjack bloquées (timeouts perdus au redémarrage)
   const state = loadState();
+  const stuck = Object.keys(state.blackjack || {});
+  if (stuck.length > 0) {
+    for (const userId of stuck) {
+      const session = state.blackjack[userId];
+      // Log la perte (mise déjà débitée avant le redémarrage)
+      const { logIrfEvent } = require("./irf-log");
+      logIrfEvent({
+        userId,
+        type: "💀 Défaite Casino",
+        game: "Blackjack (session expirée)",
+        stake: session.amount,
+        amount: -session.amount,
+        byId: "casino",
+        date: Date.now(),
+      });
+    }
+    state.blackjack = {};
+    saveState(state);
+    console.log(`[Casino] ${stuck.length} session(s) blackjack bloquée(s) nettoyée(s) au démarrage.`);
+  }
   await updateCasinoMessage(client, state);
 }
 
