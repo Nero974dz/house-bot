@@ -928,6 +928,7 @@ module.exports = {
   registerDelMoneyCommand,
   registerVirementCommand,
   registerDepositCommand,
+  sendRichestLeaderboard,
   registerClassementSetupCommand,
   startRichestLeaderboardScheduler,
   DEFAULT_BALANCE,
