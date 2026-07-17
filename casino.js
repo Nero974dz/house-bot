@@ -11,7 +11,7 @@ const {
   SlashCommandBuilder,
 } = require("discord.js");
 const { getStatePath, persistState } = require("./storage");
-const { hasEnough, removeFunds, addFunds, getBalance, formatEuro } = require("./bank");
+const { hasEnough, removeFunds, addFunds, getBalance, formatEuro, isAccountFrozen } = require("./bank");
 const { logIrfEvent } = require("./irf-log");
 
 const CASINO_CHANNEL_ID = "1527054335928827954";
@@ -1402,6 +1402,13 @@ async function handleCasinoInteraction(interaction, client) {
       if (!hasCasinoAccess(interaction.member)) {
         await interaction.reply({
           content: "🎟️ Vous n'avez pas encore accès au casino. Cliquez sur **Demander l'accès au casino** pour soumettre votre dossier à l'IRF.",
+          ephemeral: true,
+        });
+        return true;
+      }
+      if (isAccountFrozen(interaction.user.id)) {
+        await interaction.reply({
+          content: "❄️ Votre compte est **gelé**. Vous ne pouvez pas jouer au casino.",
           ephemeral: true,
         });
         return true;
