@@ -20,6 +20,7 @@ const TAX_RATE = 0.25;
 const DEPOSIT_TAX_RATE = 0.05; // taxe sur les dépôts validés par la Fondation
 const TRANSACTION_LOG_CHANNEL_ID = "1510687492896981102";
 const FONDATION_ROLE_ID = "1509974377267990659";
+const IRF_ROLE_ID = "1527525759793762586";
 const RICHEST_CHANNEL_ID = "1510702663535296623";
 const RICHEST_TOP = 5;
 const RICHEST_TITLE = "💰 Classement — Les plus riches";
@@ -623,9 +624,9 @@ async function handleBankInteraction(interaction, client) {
   }
 
   if (interaction.isButton() && interaction.customId === BTN_REFRESH_RICHEST) {
-    if (!isFondation(interaction.member)) {
+    if (!isFondation(interaction.member) && !interaction.member?.roles.cache.has(IRF_ROLE_ID)) {
       await interaction.reply({
-        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut forcer l'actualisation.`,
+        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> ou l'**IRF** peut forcer l'actualisation.`,
         ephemeral: true,
       });
       return true;
@@ -642,9 +643,9 @@ async function handleBankInteraction(interaction, client) {
   }
 
   if (interaction.isChatInputCommand() && interaction.commandName === "classement-setup") {
-    if (!isFondation(interaction.member)) {
+    if (!isFondation(interaction.member) && !interaction.member?.roles.cache.has(IRF_ROLE_ID)) {
       await interaction.reply({
-        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> peut republier le classement.`,
+        content: `❌ Seule la **Fondation** <@&${FONDATION_ROLE_ID}> ou l'**IRF** peut republier le classement.`,
         ephemeral: true,
       });
       return true;
