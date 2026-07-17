@@ -3,6 +3,13 @@
   "transactions": [
     {
       "userId": "320348102055690241",
+      "type": "🔓 Dégel de compte",
+      "amount": 0,
+      "byId": "1363979726418608148",
+      "at": 1784261695862
+    },
+    {
+      "userId": "320348102055690241",
       "type": "🔒 Gel de compte",
       "amount": 0,
       "byId": "1363979726418608148",
