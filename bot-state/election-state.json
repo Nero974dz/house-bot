@@ -20,7 +20,7 @@
       "userId": "320348102055690241",
       "username": "dp5p",
       "presentation": "Donner de argent a tout le monde pour que tout le monde sois heureuse",
-      "votes": 0,
+      "votes": 1,
       "registeredAt": 1784318833785
     },
     "1527805151061086359": {
@@ -32,6 +32,7 @@
     }
   },
   "voters": [
-    "1445816241116807238"
+    "1445816241116807238",
+    "1411724649036910673"
   ]
 }
