@@ -25,9 +25,11 @@
       "reason": "Maquiallge",
       "authorId": "320348102055690241",
       "authorTag": "dp5p",
-      "status": "pending",
+      "status": "approved",
       "createdAt": 1784416891655,
-      "logMessageId": "1528179947863150663"
+      "logMessageId": "1528179947863150663",
+      "validatedAt": 1784416917095,
+      "validatorId": "1411724649036910673"
     }
   ]
 }
