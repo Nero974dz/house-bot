@@ -3,6 +3,15 @@
   "transactions": [
     {
       "byId": "casino",
+      "at": 1784491201898,
+      "userId": "1445816241116807238",
+      "type": "🏆 Victoire Casino",
+      "game": "Roulette",
+      "stake": 64000000,
+      "amount": 64000000
+    },
+    {
+      "byId": "casino",
       "at": 1784491192005,
       "userId": "1445816241116807238",
       "type": "🏆 Victoire Casino",
@@ -4491,15 +4500,6 @@
       "game": "Roulette",
       "stake": 400,
       "amount": -400
-    },
-    {
-      "byId": "casino",
-      "at": 1784469944228,
-      "userId": "1411724649036910673",
-      "type": "🏆 Victoire Casino",
-      "game": "Roulette",
-      "stake": 80,
-      "amount": 80
     }
   ]
 }
