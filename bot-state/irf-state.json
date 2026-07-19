@@ -2,6 +2,15 @@
   "messageId": "1527837157245452469",
   "transactions": [
     {
+      "byId": "casino",
+      "at": 1784422867149,
+      "userId": "1411724649036910673",
+      "type": "🏆 Victoire Casino",
+      "game": "Blackjack",
+      "stake": 250,
+      "amount": 250
+    },
+    {
       "userId": "1528200495389343784",
       "type": "💳 Dépôt Validé",
       "game": "brut 500,00 €",
