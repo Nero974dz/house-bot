@@ -37,8 +37,9 @@
     "dep_1784422796724": {
       "userId": "1528200495389343784",
       "amount": 500,
-      "status": "pending",
-      "createdAt": 1784422796724
+      "status": "sent",
+      "createdAt": 1784422796724,
+      "sentAt": 1784422804834
     }
   },
   "richestMessageId": null
