@@ -1,47 +1,6 @@
 {
   "messageId": "1510685400857972776",
-  "weekStart": "2026-07-13",
+  "weekStart": "2026-07-20",
   "totalBudget": 5000,
-  "expenses": [
-    {
-      "id": "achat_1784212649868_1057",
-      "type": "achat",
-      "amount": 90.8,
-      "label": "Abonnement Pass Navigo",
-      "reason": "Moyen de Transport",
-      "authorId": "1521792561293951057",
-      "authorTag": "madamebenshi",
-      "status": "approved",
-      "createdAt": 1784212649869,
-      "logMessageId": "1527323295639273684",
-      "validatedAt": 1784213188247,
-      "validatorId": "1411724649036910673"
-    },
-    {
-      "id": "achat_1784416891655_0241",
-      "type": "achat",
-      "amount": 500,
-      "label": "Je veux un Panier Sephora",
-      "reason": "Maquiallge",
-      "authorId": "320348102055690241",
-      "authorTag": "dp5p",
-      "status": "approved",
-      "createdAt": 1784416891655,
-      "logMessageId": "1528179947863150663",
-      "validatedAt": 1784416917095,
-      "validatorId": "1411724649036910673"
-    },
-    {
-      "id": "achat_1784457146895_8379",
-      "type": "achat",
-      "amount": 15,
-      "label": "je veux acheter un souvenir italie",
-      "reason": "Souvenirs",
-      "authorId": "1484568600693178379",
-      "authorTag": "ela068658",
-      "status": "pending",
-      "createdAt": 1784457146895,
-      "logMessageId": "1528348790602334209"
-    }
-  ]
+  "expenses": []
 }
