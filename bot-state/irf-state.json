@@ -3,6 +3,15 @@
   "transactions": [
     {
       "byId": "casino",
+      "at": 1784487659201,
+      "userId": "1411724649036910673",
+      "type": "💀 Défaite Casino",
+      "game": "Machine à sous",
+      "stake": 0.1,
+      "amount": -0.02
+    },
+    {
+      "byId": "casino",
       "at": 1784487651444,
       "userId": "1411724649036910673",
       "type": "💀 Défaite Casino",
@@ -4491,15 +4500,6 @@
       "game": "Machine à sous",
       "stake": 0.1,
       "amount": -0.06
-    },
-    {
-      "byId": "casino",
-      "at": 1784467473384,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Machine à sous",
-      "stake": 0.1,
-      "amount": -0.04
     }
   ]
 }
