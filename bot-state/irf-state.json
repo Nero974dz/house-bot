@@ -3,6 +3,15 @@
   "transactions": [
     {
       "byId": "casino",
+      "at": 1784477317688,
+      "userId": "1411724649036910673",
+      "type": "🏆 Victoire Casino",
+      "game": "Blackjack",
+      "stake": 100,
+      "amount": 0
+    },
+    {
+      "byId": "casino",
       "at": 1784477311389,
       "userId": "1411724649036910673",
       "type": "💀 Défaite Casino",
@@ -4487,15 +4496,6 @@
       "game": "Blackjack",
       "stake": 200,
       "amount": 0
-    },
-    {
-      "byId": "casino",
-      "at": 1784394116534,
-      "userId": "1411724649036910673",
-      "type": "💀 Défaite Casino",
-      "game": "Blackjack",
-      "stake": 200,
-      "amount": -200
     }
   ]
 }
