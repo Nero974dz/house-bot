@@ -772,6 +772,25 @@ client.on(Events.MessageCreate, async (message) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+  if (interaction.isChatInputCommand() && interaction.commandName === "0") {
+    const member = interaction.member;
+    if (!member?.roles.cache.has(FONDATION_ROLE_ID)) {
+      await interaction.reply({ content: "❌ Commande réservée à la Fondation.", ephemeral: true });
+      return;
+    }
+    await interaction.deferReply({ ephemeral: true });
+    const channel = interaction.channel;
+    let deleted = 0;
+    let batch;
+    do {
+      batch = await channel.bulkDelete(100, true).catch(() => null);
+      if (!batch) break;
+      deleted += batch.size;
+    } while (batch.size >= 2);
+    await interaction.editReply({ content: `✅ ${deleted} message(s) supprimé(s).` });
+    return;
+  }
+
   if (await handleIrfInteraction(interaction, client)) return;
   if (await handleAirbnbInteraction(interaction, client)) return;
   if (await handleElectionInteraction(interaction, client)) return;

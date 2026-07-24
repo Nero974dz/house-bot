@@ -52,6 +52,10 @@ async function registerSlashCommands(client, token) {
       )
       .toJSON(),
     new SlashCommandBuilder()
+      .setName("0")
+      .setDescription("Supprimer tous les messages du salon (Fondation uniquement)")
+      .toJSON(),
+    new SlashCommandBuilder()
       .setName("correctif")
       .setDescription("Gérer les correctifs (Fondation uniquement)")
       .addSubcommand(sub => sub.setName("publier").setDescription("Publier tous les correctifs en attente"))
@@ -92,7 +96,7 @@ async function registerSlashCommands(client, token) {
       );
   }
   console.log(
-    "Commandes /achat, /report, /crédit, /mission, /chat, /correctif, /bank, /addmoney, /delbank, /virement, /classement-setup, /pari-setup, /send1, /casino-setup, /license et /tablicense enregistrées"
+    "Commandes /achat, /report, /crédit, /mission, /chat, /correctif, /0, /bank, /addmoney, /delbank, /virement, /classement-setup, /pari-setup, /send1, /casino-setup, /license et /tablicense enregistrées"
   );
 }
 
