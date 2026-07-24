@@ -791,12 +791,12 @@ async function reportCasinoResult(client, { userId, game, stake, payout, detail 
 
 function buildSlotSpinsRow() {
   return new ActionRowBuilder().addComponents(
-    [1, 5, 10].map((n) =>
+    [1, 5, 10, 100].map((n) =>
       new ButtonBuilder()
         .setCustomId(`${SLOT_SPINS_PREFIX}${n}`)
         .setLabel(n === 1 ? "1 tour" : `x${n} tours`)
         .setEmoji("🎰")
-        .setStyle(n === 1 ? ButtonStyle.Secondary : ButtonStyle.Primary)
+        .setStyle(n === 1 ? ButtonStyle.Secondary : n === 100 ? ButtonStyle.Danger : ButtonStyle.Primary)
     )
   );
 }
