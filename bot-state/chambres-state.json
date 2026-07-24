@@ -74,10 +74,17 @@
     ]
   },
   "enchere": {
-    "currentBid": 1500,
-    "currentBidderId": null,
-    "currentBidderName": null,
-    "history": []
+    "currentBid": 2500,
+    "currentBidderId": "1173310115055665162",
+    "currentBidderName": "Lily",
+    "history": [
+      {
+        "id": "1173310115055665162",
+        "name": "Lily",
+        "montant": 2500,
+        "ts": 1784927677769
+      }
+    ]
   },
   "enchereMessageId": "1530321195025698819"
 }
