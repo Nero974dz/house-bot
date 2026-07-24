@@ -189,7 +189,7 @@ function formatOccupants(guild, occupants) {
     const savedName = typeof o === "object" ? o.name : null;
     const m = guild.members.cache.get(id);
     const name = m?.displayName ?? savedName ?? `*(membre parti)*`;
-    return `${name} (\`${id}\`)`;
+    return `${name} (<@${id}>)`;
   });
   return `— ${names.join(", ")}`;
 }
