@@ -11,9 +11,11 @@
       "reason": "C'est le setup complet j'aimerai bien pouvoir vivre de ma passion",
       "authorId": "1123383269929525371",
       "authorTag": "ellenmcx",
-      "status": "pending",
+      "status": "approved",
       "createdAt": 1784925525263,
-      "logMessageId": "1530313311915081833"
+      "logMessageId": "1530313311915081833",
+      "validatedAt": 1784928935257,
+      "validatorId": "1411724649036910673"
     }
   ]
 }
