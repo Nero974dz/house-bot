@@ -7,10 +7,18 @@ const {
   ButtonStyle,
   StringSelectMenuBuilder,
   UserSelectMenuBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } = require("discord.js");
 
 const CHAMBRES_CHANNEL_ID = "1509983864624386048";
 const CHAMBRE_LOG_CHANNEL_ID = "1510687492896981102";
+const ENCHERE_NOTIF_CHANNEL_ID = "1509983753605349498";
+const ENCHERE_PENTHOUSE_ROOM_ID = "m1_penthouse";
+const ENCHERE_PRIX_BASE = 1500;
+const ENCHERE_BID_BUTTON_ID = "enchere_penthouse_bid";
+const ENCHERE_MODAL_ID = "enchere_penthouse_modal";
 const CHAMBRE_AJOUT_PREFIX = "chambre_ajout:";
 const CHAMBRE_RETRAIT_PREFIX = "chambre_retrait:";
 const CHAMBRE_SELECT_ROOM_PREFIX = "chambre_select_room:";
@@ -73,6 +81,8 @@ function migrateState(raw) {
   const state = {
     messageIds: { maison1: null, maison2: null },
     rooms: emptyRoomsState(),
+    enchere: raw?.enchere ?? { currentBid: ENCHERE_PRIX_BASE, currentBidderId: null, currentBidderName: null, history: [] },
+    enchereMessageId: raw?.enchereMessageId ?? null,
   };
 
   if (!raw || typeof raw !== "object") return state;
@@ -636,7 +646,207 @@ async function handleChambreInteraction(interaction) {
     return true;
   }
 
+  // ── Enchères Penthouse ──
+  if (interaction.isButton() && interaction.customId === ENCHERE_BID_BUTTON_ID) {
+    const state = loadState();
+    const enc = state.enchere;
+    const minBid = enc.currentBid + 1;
+
+    const modal = new ModalBuilder()
+      .setCustomId(ENCHERE_MODAL_ID)
+      .setTitle("🏆 Enchérir sur le Penthouse 1");
+
+    const input = new TextInputBuilder()
+      .setCustomId("montant")
+      .setLabel(`Offre minimale : ${minBid.toLocaleString("fr-FR")}€`)
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder(`Ex: ${minBid}`)
+      .setRequired(true);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(input));
+    await interaction.showModal(modal);
+    return true;
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId === ENCHERE_MODAL_ID) {
+    const state = loadState();
+    const enc = state.enchere;
+    const raw = interaction.fields.getTextInputValue("montant").replace(/\s/g, "");
+    const montant = parseInt(raw, 10);
+
+    if (isNaN(montant) || montant <= enc.currentBid) {
+      await interaction.reply({
+        content: `❌ Ton offre doit être supérieure à **${enc.currentBid.toLocaleString("fr-FR")}€**.`,
+        ephemeral: true,
+      });
+      return true;
+    }
+
+    const previousBidderId = enc.currentBidderId;
+    enc.currentBid = montant;
+    enc.currentBidderId = interaction.user.id;
+    enc.currentBidderName = interaction.member?.displayName ?? interaction.user.username;
+    enc.history.push({ id: interaction.user.id, name: enc.currentBidderName, montant, ts: Date.now() });
+    saveState(state);
+
+    const notifChannel = await interaction.client.channels.fetch(ENCHERE_NOTIF_CHANNEL_ID).catch(() => null);
+    if (notifChannel?.isTextBased()) {
+      const embed = new EmbedBuilder()
+        .setColor(0xf1c40f)
+        .setTitle("🏆 Nouvelle enchère — Penthouse 1")
+        .setDescription(
+          `**${enc.currentBidderName}** prend la tête avec **${montant.toLocaleString("fr-FR")}€** !\n\n` +
+          (previousBidderId && previousBidderId !== interaction.user.id
+            ? `> <@${previousBidderId}> tu viens de te faire dépasser 👀\n\n`
+            : "") +
+          `*L'enchère se termine à **5h00** ce matin.*`
+        )
+        .setFooter({ text: `Prix de base : ${ENCHERE_PRIX_BASE.toLocaleString("fr-FR")}€` })
+        .setTimestamp();
+      await notifChannel.send({ content: `<@${interaction.user.id}>`, embeds: [embed] }).catch(() => null);
+    }
+
+    await updateHousePanel(interaction.guild, interaction.client, "maison1");
+    await interaction.reply({
+      content: `✅ Ton enchère de **${montant.toLocaleString("fr-FR")}€** a été enregistrée ! L'enchère se termine à **5h00**.`,
+      ephemeral: true,
+    });
+    return true;
+  }
+
   return false;
+}
+
+// ── Fonctions enchères ──
+function emptyEnchere() {
+  return {
+    currentBid: ENCHERE_PRIX_BASE,
+    currentBidderId: null,
+    currentBidderName: null,
+    history: [],
+  };
+}
+
+function buildEnchereEmbed(enc) {
+  const hasWinner = !!enc.currentBidderId;
+  return new EmbedBuilder()
+    .setColor(hasWinner ? 0xf1c40f : 0x2b2d31)
+    .setTitle("🏆 Enchères — Penthouse 1 (nuit)")
+    .setDescription(
+      `> *La nuit au Penthouse, ça se mérite.*\n\n` +
+      `💰 **Prix de départ :** ${ENCHERE_PRIX_BASE.toLocaleString("fr-FR")}€\n` +
+      `🔥 **Meilleure offre :** ${enc.currentBid.toLocaleString("fr-FR")}€\n` +
+      `👑 **Meneur :** ${hasWinner ? `${enc.currentBidderName} (<@${enc.currentBidderId}>)` : "*Aucun encore — soyez le premier !*"}\n\n` +
+      `⏰ **Clôture :** 5h00 du matin\n\n` +
+      `*Cliquez sur le bouton ci-dessous pour surenchérir.*`
+    )
+    .setFooter({ text: `${enc.history.length} enchère(s) placée(s)` })
+    .setTimestamp();
+}
+
+async function setupEnchereMessage(client) {
+  const channel = await client.channels.fetch(CHAMBRES_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) return;
+
+  const state = loadState();
+  if (!state.enchere) state.enchere = emptyEnchere();
+
+  const embed = buildEnchereEmbed(state.enchere);
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(ENCHERE_BID_BUTTON_ID)
+      .setLabel("Enchérir sur le Penthouse 1")
+      .setEmoji("🏆")
+      .setStyle(ButtonStyle.Primary)
+  );
+
+  if (state.enchereMessageId) {
+    const msg = await channel.messages.fetch(state.enchereMessageId).catch(() => null);
+    if (msg) {
+      await msg.edit({ embeds: [embed], components: [row] });
+      saveState(state);
+      return;
+    }
+  }
+
+  const sent = await channel.send({ embeds: [embed], components: [row] });
+  state.enchereMessageId = sent.id;
+  saveState(state);
+}
+
+async function updateEnchereMessage(client) {
+  const channel = await client.channels.fetch(CHAMBRES_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) return;
+
+  const state = loadState();
+  if (!state.enchere) return;
+
+  const embed = buildEnchereEmbed(state.enchere);
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(ENCHERE_BID_BUTTON_ID)
+      .setLabel("Enchérir sur le Penthouse 1")
+      .setEmoji("🏆")
+      .setStyle(ButtonStyle.Primary)
+  );
+
+  if (state.enchereMessageId) {
+    const msg = await channel.messages.fetch(state.enchereMessageId).catch(() => null);
+    if (msg) await msg.edit({ embeds: [embed], components: [row] }).catch(() => null);
+  }
+}
+
+async function cloturerEnchere(client) {
+  const state = loadState();
+  if (!state.enchere) return;
+
+  const enc = state.enchere;
+  const notifChannel = await client.channels.fetch(ENCHERE_NOTIF_CHANNEL_ID).catch(() => null);
+
+  if (enc.currentBidderId) {
+    // Assigner le Penthouse au gagnant
+    const guild = client.guilds.cache.first();
+    if (guild) {
+      await guild.members.fetch().catch(() => null);
+      removeMemberFromAllRooms(state, enc.currentBidderId);
+      state.rooms[ENCHERE_PENTHOUSE_ROOM_ID] = [{ id: enc.currentBidderId, name: enc.currentBidderName }];
+
+      if (notifChannel?.isTextBased()) {
+        const embed = new EmbedBuilder()
+          .setColor(0xf1c40f)
+          .setTitle("🏆 Enchère terminée — Penthouse 1")
+          .setDescription(
+            `Félicitations **${enc.currentBidderName}** ! 🎉\n\n` +
+            `Tu remportes le **Penthouse 1** pour cette nuit avec une offre de **${enc.currentBid.toLocaleString("fr-FR")}€** !\n\n` +
+            `*Profite bien de ta nuit au sommet. 🍾*`
+          )
+          .setTimestamp();
+        await notifChannel.send({ content: `<@${enc.currentBidderId}>`, embeds: [embed] }).catch(() => null);
+      }
+
+      await updateChambresPanel(guild, client).catch(() => null);
+    }
+  } else if (notifChannel?.isTextBased()) {
+    await notifChannel.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x95a5a6)
+          .setTitle("🏆 Enchère terminée — Penthouse 1")
+          .setDescription("*Aucune enchère cette nuit. Le Penthouse reste libre.*")
+          .setTimestamp(),
+      ],
+    }).catch(() => null);
+  }
+
+  // Réinitialiser l'enchère pour la nuit suivante
+  state.enchere = emptyEnchere();
+  saveState(state);
+  await setupEnchereMessage(client).catch(() => null);
+}
+
+function startEnchereScheduler(client) {
+  const cron = require("node-cron");
+  cron.schedule("0 5 * * *", () => cloturerEnchere(client), { timezone: "Europe/Paris" });
 }
 
 module.exports = {
@@ -645,4 +855,6 @@ module.exports = {
   setupChambresPanel,
   updateChambresPanel,
   handleChambreInteraction,
+  setupEnchereMessage,
+  startEnchereScheduler,
 };

@@ -57,7 +57,7 @@ const {
   memberHasHierarchyRole,
 } = require("./hierarchie");
 const { startRepasScheduler } = require("./repas");
-const { setupChambresPanel, handleChambreInteraction } = require("./chambres");
+const { setupChambresPanel, handleChambreInteraction, setupEnchereMessage, startEnchereScheduler } = require("./chambres");
 const {
   setupBudgetPanel,
   startBudgetScheduler,
@@ -746,6 +746,8 @@ client.once("ready", async () => {
 
   startRepasScheduler(client);
   await setupChambresPanel(client);
+  await setupEnchereMessage(client).catch(() => null);
+  startEnchereScheduler(client);
   await setupBudgetPanel(client).catch(() => null);
   startBudgetScheduler(client);
   startWeeklyBilanScheduler(client);
