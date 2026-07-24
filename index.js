@@ -781,12 +781,34 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await interaction.deferReply({ ephemeral: true });
     const channel = interaction.channel;
     let deleted = 0;
-    let batch;
-    do {
-      batch = await channel.bulkDelete(100, true).catch(() => null);
-      if (!batch) break;
-      deleted += batch.size;
-    } while (batch.size >= 2);
+
+    // Supprimer en boucle jusqu'à ce qu'il n'y ait plus rien
+    while (true) {
+      const fetched = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+      if (!fetched || fetched.size === 0) break;
+
+      // Séparer récents (<14j) et anciens (>=14j)
+      const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
+      const recent = fetched.filter(m => m.createdTimestamp > cutoff);
+      const old = fetched.filter(m => m.createdTimestamp <= cutoff);
+
+      if (recent.size >= 2) {
+        const bulk = await channel.bulkDelete(recent, true).catch(() => null);
+        if (bulk) deleted += bulk.size;
+      } else if (recent.size === 1) {
+        await recent.first().delete().catch(() => null);
+        deleted++;
+      }
+
+      for (const msg of old.values()) {
+        await msg.delete().catch(() => null);
+        deleted++;
+        await new Promise(r => setTimeout(r, 300)); // éviter le rate limit
+      }
+
+      if (fetched.size < 2) break;
+    }
+
     await interaction.editReply({ content: `✅ ${deleted} message(s) supprimé(s).` });
     return;
   }
