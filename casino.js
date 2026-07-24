@@ -633,11 +633,7 @@ async function settleBlackjack(client, userId) {
   let resultLine;
   let payout = 0;
 
-  // Plafonné : toujours perdre
-  if (isCapped(userId, amount)) {
-    status = "lose";
-    resultLine = `❌ Le croupier gagne (${dealerTotal} contre ${playerTotal}). Perdu (${formatEuro(amount)}).`;
-  } else if (playerTotal > 21) {
+  if (playerTotal > 21) {
     status = "lose";
     resultLine = `💥 Vous dépassez 21. Perdu (${formatEuro(amount)}).`;
   } else if (isNaturalBJ && dealerTotal === 21) {
@@ -709,6 +705,23 @@ async function startBlackjack(interaction, client, amount) {
   });
 
   if (handTotal(player) === 21) {
+    if (capped) {
+      // Forcer le croupier à avoir aussi 21 (égalité) — ajouter des cartes pour atteindre 21
+      const session = getBjSession(interaction.user.id);
+      while (handTotal(session.dealer) < 21 && session.deck.length > 0) {
+        const dealerNow = handTotal(session.dealer);
+        const needed = 21 - dealerNow;
+        const exact = session.deck.find(c => cardBaseValue(c.rank) === needed);
+        const under = session.deck
+          .filter(c => cardBaseValue(c.rank) < needed)
+          .sort((a, b) => cardBaseValue(b.rank) - cardBaseValue(a.rank))[0];
+        const chosen = exact || under || session.deck[session.deck.length - 1];
+        const idx = session.deck.indexOf(chosen);
+        if (idx !== -1) session.deck.splice(idx, 1);
+        session.dealer.push(chosen);
+      }
+      setBjSession(interaction.user.id, session);
+    }
     const embed = await settleBlackjack(client, interaction.user.id);
     await interaction.editReply({ embeds: [embed], components: [] });
     return;
@@ -1661,13 +1674,23 @@ async function handleCasinoInteraction(interaction, client) {
       }
 
       if (session.capped) {
-        // Le croupier tire jusqu'à battre le joueur (sans dépasser 21 si possible)
         const playerTotal = handTotal(session.player);
-        while (handTotal(session.dealer) <= playerTotal && session.deck.length > 0) {
-          session.dealer.push(session.deck.pop());
+        // Cible : playerTotal + 1 pour battre, ou playerTotal pour égalité si joueur a 21
+        const target = playerTotal >= 21 ? 21 : playerTotal + 1;
+        // Chercher dans le deck une carte qui amène le croupier exactement à target
+        while (handTotal(session.dealer) < target && session.deck.length > 0) {
+          const dealerNow = handTotal(session.dealer);
+          const needed = target - dealerNow;
+          // Préférer la carte qui tombe pile sur le needed, sinon la plus petite carte sous needed
+          const exact = session.deck.find(c => cardBaseValue(c.rank) === needed);
+          const under = session.deck
+            .filter(c => cardBaseValue(c.rank) < needed)
+            .sort((a, b) => cardBaseValue(b.rank) - cardBaseValue(a.rank))[0];
+          const chosen = exact || under || session.deck[session.deck.length - 1];
+          const idx = session.deck.indexOf(chosen);
+          if (idx !== -1) session.deck.splice(idx, 1);
+          session.dealer.push(chosen);
         }
-        // Si le croupier a dépassé 21 en essayant, on lui remet des cartes basses
-        // pour rester sous 21 tout en battant le joueur — mais si impossible, on laisse
       } else {
         while (handTotal(session.dealer) < 17) {
           session.dealer.push(session.deck.pop());
