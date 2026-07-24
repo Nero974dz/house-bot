@@ -1,5 +1,6 @@
 const fs = require("fs");
 const { getStatePath, persistState } = require("./storage");
+const { hasEnough, removeFunds, getBalance, formatEuro, TREASURY_ACCOUNT_ID, addFunds } = require("./bank");
 const {
   EmbedBuilder,
   ActionRowBuilder,
@@ -682,6 +683,16 @@ async function handleChambreInteraction(interaction) {
       return true;
     }
 
+    // Vérification du solde
+    const solde = getBalance(interaction.user.id);
+    if (!hasEnough(interaction.user.id, montant)) {
+      await interaction.reply({
+        content: `❌ Tu n'as pas assez d'argent. Ton solde : **${solde.toLocaleString("fr-FR")}€** — Offre demandée : **${montant.toLocaleString("fr-FR")}€**.`,
+        ephemeral: true,
+      });
+      return true;
+    }
+
     const previousBidderId = enc.currentBidderId;
     enc.currentBid = montant;
     enc.currentBidderId = interaction.user.id;
@@ -804,6 +815,13 @@ async function cloturerEnchere(client) {
   const notifChannel = await client.channels.fetch(ENCHERE_NOTIF_CHANNEL_ID).catch(() => null);
 
   if (enc.currentBidderId) {
+    // Débiter le gagnant
+    const soldeAvant = getBalance(enc.currentBidderId);
+    if (hasEnough(enc.currentBidderId, enc.currentBid)) {
+      removeFunds(enc.currentBidderId, enc.currentBid);
+      addFunds(TREASURY_ACCOUNT_ID, enc.currentBid);
+    }
+
     // Assigner le Penthouse au gagnant
     const guild = client.guilds.cache.first();
     if (guild) {
@@ -811,6 +829,7 @@ async function cloturerEnchere(client) {
       removeMemberFromAllRooms(state, enc.currentBidderId);
       state.rooms[ENCHERE_PENTHOUSE_ROOM_ID] = [{ id: enc.currentBidderId, name: enc.currentBidderName }];
 
+      const soldeApres = getBalance(enc.currentBidderId);
       if (notifChannel?.isTextBased()) {
         const embed = new EmbedBuilder()
           .setColor(0xf1c40f)
@@ -818,6 +837,8 @@ async function cloturerEnchere(client) {
           .setDescription(
             `Félicitations **${enc.currentBidderName}** ! 🎉\n\n` +
             `Tu remportes le **Penthouse 1** pour cette nuit avec une offre de **${enc.currentBid.toLocaleString("fr-FR")}€** !\n\n` +
+            `💳 **${enc.currentBid.toLocaleString("fr-FR")}€** ont été débités de ton compte.\n` +
+            `💰 Nouveau solde : **${soldeApres.toLocaleString("fr-FR")}€**\n\n` +
             `*Profite bien de ta nuit au sommet. 🍾*`
           )
           .setTimestamp();
