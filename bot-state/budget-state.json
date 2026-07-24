@@ -2,5 +2,18 @@
   "messageId": "1510685400857972776",
   "weekStart": "2026-07-20",
   "totalBudget": 5000,
-  "expenses": []
+  "expenses": [
+    {
+      "id": "achat_1784925525263_5371",
+      "type": "achat",
+      "amount": 1800,
+      "label": "J'aimerai acheter un pc gamer svp",
+      "reason": "C'est le setup complet j'aimerai bien pouvoir vivre de ma passion",
+      "authorId": "1123383269929525371",
+      "authorTag": "ellenmcx",
+      "status": "pending",
+      "createdAt": 1784925525263,
+      "logMessageId": "1530313311915081833"
+    }
+  ]
 }
