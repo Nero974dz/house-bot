@@ -88,7 +88,10 @@ function migrateState(raw) {
   for (const [roomId, occupants] of Object.entries(sourceRooms)) {
     const targetId = LEGACY_ROOM_IDS[roomId] ?? roomId;
     if (state.rooms[targetId] !== undefined && Array.isArray(occupants)) {
-      state.rooms[targetId] = occupants;
+      // Migration : anciens formats (string id) → {id, name}
+      state.rooms[targetId] = occupants.map((o) =>
+        typeof o === "string" ? { id: o, name: null } : o
+      );
     }
   }
 
@@ -120,7 +123,7 @@ function getRoom(roomId) {
 function removeMemberFromAllRooms(state, userId) {
   for (const room of ALL_ROOMS) {
     state.rooms[room.id] = (state.rooms[room.id] || []).filter(
-      (id) => id !== userId
+      (o) => (typeof o === "string" ? o : o.id) !== userId
     );
   }
 }
@@ -179,15 +182,16 @@ async function sendChambreLog(client, embed) {
   await channel.send({ embeds: [embed] }).catch(() => null);
 }
 
-function formatOccupants(guild, userIds) {
-  if (!userIds?.length) return "— **Libre**";
-  const mentions = userIds
-    .map((id) => {
-      const m = guild.members.cache.get(id);
-      return m ? `${m}` : `<@${id}>`;
-    })
-    .join(", ");
-  return `— ${mentions}`;
+function formatOccupants(guild, occupants) {
+  if (!occupants?.length) return "— **Libre**";
+  const names = occupants.map((o) => {
+    const id = typeof o === "string" ? o : o.id;
+    const savedName = typeof o === "object" ? o.name : null;
+    const m = guild.members.cache.get(id);
+    if (m) return m.displayName;
+    return savedName ?? `*(membre parti)*`;
+  });
+  return `— ${names.join(", ")}`;
 }
 
 function buildHouseEmbed(guild, house) {
@@ -280,17 +284,20 @@ function buildRemoveRoomSelectMenu(houseId) {
 
 function buildRemoveUserSelectMenu(guild, houseId, roomId) {
   const state = loadState();
-  const ids = state.rooms[roomId] || [];
+  const occupants = state.rooms[roomId] || [];
 
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`${CHAMBRE_REMOVE_USER_PREFIX}${houseId}:${roomId}`)
       .setPlaceholder("Membre à retirer")
       .addOptions(
-        ids.map((id) => {
+        occupants.map((o) => {
+          const id = typeof o === "string" ? o : o.id;
+          const savedName = typeof o === "object" ? o.name : null;
           const m = guild.members.cache.get(id);
+          const label = m?.displayName ?? savedName ?? `Utilisateur ${id.slice(-4)}`;
           return {
-            label: m?.user.username ?? `Utilisateur ${id.slice(-4)}`,
+            label: label.slice(0, 100),
             value: id,
             description: m?.user.tag,
           };
@@ -347,10 +354,18 @@ async function updateHousePanel(guild, client, houseId) {
   }
 
   if (!msg) {
-    const messages = await channel.messages.fetch({ limit: 25 }).catch(() => null);
-    msg = messages?.find(
+    const messages = await channel.messages.fetch({ limit: 100 }).catch(() => null);
+    const candidates = messages?.filter(
       (m) => m.author.id === client.user.id && m.embeds[0]?.title === panelTitle
     );
+    if (candidates?.size > 0) {
+      // Garder le plus récent, supprimer les doublons
+      const sorted = [...candidates.values()].sort((a, b) => b.createdTimestamp - a.createdTimestamp);
+      msg = sorted[0];
+      for (const dup of sorted.slice(1)) {
+        await dup.delete().catch(() => null);
+      }
+    }
   }
 
   if (msg) {
@@ -515,7 +530,7 @@ async function handleChambreInteraction(interaction) {
       const state = loadState();
       const occupants = state.rooms[room.id] || [];
 
-      if (!occupants.includes(targetId)) {
+      if (!occupants.some((o) => (typeof o === "string" ? o : o.id) === targetId)) {
         await interaction.update({
           content: `ℹ️ Ce membre n'est pas dans **${room.name}**.`,
           components: [],
@@ -523,7 +538,7 @@ async function handleChambreInteraction(interaction) {
         return true;
       }
 
-      state.rooms[room.id] = occupants.filter((id) => id !== targetId);
+      state.rooms[room.id] = occupants.filter((o) => (typeof o === "string" ? o : o.id) !== targetId);
       saveState(state);
 
       const target = await interaction.guild.members
@@ -580,7 +595,7 @@ async function handleChambreInteraction(interaction) {
     const state = loadState();
     const occupants = state.rooms[room.id] || [];
 
-    if (occupants.includes(targetId)) {
+    if (occupants.some((o) => (typeof o === "string" ? o : o.id) === targetId)) {
       await interaction.update({
         content: `ℹ️ Ce membre est déjà dans **${room.name}**.`,
         components: [],
@@ -596,14 +611,11 @@ async function handleChambreInteraction(interaction) {
       return true;
     }
 
+    const target = await interaction.guild.members.fetch(targetId).catch(() => null);
     removeMemberFromAllRooms(state, targetId);
-    occupants.push(targetId);
+    occupants.push({ id: targetId, name: target?.displayName ?? null });
     state.rooms[room.id] = occupants;
     saveState(state);
-
-    const target = await interaction.guild.members
-      .fetch(targetId)
-      .catch(() => null);
 
     await updateHousePanel(interaction.guild, interaction.client, houseId);
     await sendChambreLog(
