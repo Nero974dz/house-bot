@@ -68,5 +68,12 @@
         "name": null
       }
     ]
-  }
+  },
+  "enchere": {
+    "currentBid": 1500,
+    "currentBidderId": null,
+    "currentBidderName": null,
+    "history": []
+  },
+  "enchereMessageId": null
 }
