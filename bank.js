@@ -228,6 +228,11 @@ async function logTransaction(client, { type, from, to, gross, tax, net }) {
 }
 
 async function handleBankInteraction(interaction, client) {
+  if (interaction.isChatInputCommand() && interaction.commandName === "reset") {
+    await handleResetCommand(interaction, client);
+    return true;
+  }
+
   if (interaction.isChatInputCommand() && interaction.commandName === "bank") {
     const balance = getBalance(interaction.user.id);
     await interaction.reply({
@@ -1099,6 +1104,63 @@ function registerSaisieCommand() {
     .toJSON();
 }
 
+function registerResetCommand() {
+  return new SlashCommandBuilder()
+    .setName("reset")
+    .setDescription("Remet tout le monde à 500 € et vide la trésorerie (Fondation uniquement)")
+    .toJSON();
+}
+
+async function handleResetCommand(interaction, client) {
+  if (!isFondation(interaction.member)) {
+    await interaction.reply({ content: `❌ Seule la **Fondation** peut utiliser cette commande.`, ephemeral: true });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  const state = loadState();
+
+  // Remettre tous les comptes existants à DEFAULT_BALANCE
+  for (const id of Object.keys(state.balances)) {
+    state.balances[id] = id === TREASURY_ACCOUNT_ID ? 0 : DEFAULT_BALANCE;
+  }
+
+  // Initialiser aussi tous les membres du serveur qui n'ont pas encore de compte
+  if (client && interaction.guild) {
+    await interaction.guild.members.fetch().catch(() => null);
+    for (const [id, member] of interaction.guild.members.cache) {
+      if (member.user.bot) continue;
+      if (id === TREASURY_ACCOUNT_ID) continue;
+      state.balances[id] = DEFAULT_BALANCE;
+    }
+  }
+
+  // Vider les dépôts en attente
+  state.deposits = {};
+
+  // Débloquer tous les comptes gelés
+  state.frozenAccounts = {};
+
+  saveState(state);
+
+  await interaction.editReply({ content: `✅ Remise à zéro effectuée. Tous les comptes sont maintenant à **${formatEuro(DEFAULT_BALANCE)}**, la trésorerie est vidée.` });
+
+  // Log dans le salon de transactions
+  const channel = await client.channels.fetch(TRANSACTION_LOG_CHANNEL_ID).catch(() => null);
+  if (channel?.isTextBased()) {
+    await channel.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xe74c3c)
+          .setTitle("🔄 Remise à zéro de la banque")
+          .setDescription(`Tous les comptes ont été remis à **${formatEuro(DEFAULT_BALANCE)}** par <@${interaction.user.id}>.`)
+          .setTimestamp(),
+      ],
+    }).catch(() => null);
+  }
+}
+
 async function handleDmAddMoney(message, client) {
   // Uniquement en DM, syntaxe: add @id montant
   if (message.author.bot) return false;
@@ -1194,4 +1256,5 @@ module.exports = {
   TAX_RATE,
   TRANSACTION_LOG_CHANNEL_ID,
   initAllMembersBalance,
+  registerResetCommand,
 };
