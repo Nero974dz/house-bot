@@ -1142,6 +1142,17 @@ async function handleResetCommand(interaction, client) {
   // Débloquer tous les comptes gelés
   state.frozenAccounts = {};
 
+  // Remettre le jackpot casino à la valeur de départ
+  try {
+    const { getStatePath, persistState: persist } = require("./storage");
+    const casinoFile = getStatePath("casino-state.json");
+    let casinoState = { jackpot: 1000, duels: [], blackjack: {} };
+    try { casinoState = JSON.parse(fs.readFileSync(casinoFile, "utf8")); } catch {}
+    casinoState.jackpot = 1000;
+    fs.writeFileSync(casinoFile, JSON.stringify(casinoState, null, 2));
+    persist("casino-state.json");
+  } catch {}
+
   saveState(state);
 
   await interaction.editReply({ content: `✅ Remise à zéro effectuée. Tous les comptes sont maintenant à **${formatEuro(DEFAULT_BALANCE)}**, la trésorerie est vidée.` });
