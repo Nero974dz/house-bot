@@ -6,7 +6,7 @@ const HIERARCHY_CHANNEL_ID = "1509983829744681101";
 const HIERARCHY_ROLES = [
   { id: "1509974377267990659", name: "Fondation" },
   { id: "1509984877120847963", name: "Responsable" },
-  { id: "1509979964651343993", name: "Admin" },
+  { id: "1509979964651343993", name: "Supervision" },
   { id: "1509985135565475850", name: "Gerants" },
   { id: "1509983439968010401", name: "Membre" },
 ];
