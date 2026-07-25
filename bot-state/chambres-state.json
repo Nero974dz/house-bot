@@ -30,20 +30,11 @@
     ],
     "m1_penthouse": [
       {
-        "id": "1445816241116807238",
-        "name": "𝚁𝚢𝚞𝚔"
-      },
-      {
-        "id": "1411724649036910673",
-        "name": "Tyr"
-      }
-    ],
-    "m2_penthouse1": [
-      {
         "id": "1173310115055665162",
         "name": "Lily"
       }
     ],
+    "m2_penthouse1": [],
     "m2_penthouse2": [],
     "m2_penthouse3": [],
     "m2_penthouse4": [],
@@ -74,17 +65,10 @@
     ]
   },
   "enchere": {
-    "currentBid": 2500,
-    "currentBidderId": "1173310115055665162",
-    "currentBidderName": "Lily",
-    "history": [
-      {
-        "id": "1173310115055665162",
-        "name": "Lily",
-        "montant": 2500,
-        "ts": 1784927677769
-      }
-    ]
+    "currentBid": 1500,
+    "currentBidderId": null,
+    "currentBidderName": null,
+    "history": []
   },
   "enchereMessageId": "1530321195025698819"
 }
