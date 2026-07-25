@@ -25,9 +25,11 @@
       "reason": "Mon tel bug trop surtout avec la chaleur",
       "authorId": "1459602308168945705",
       "authorTag": "iziiiiiiiiiiiii",
-      "status": "pending",
+      "status": "approved",
       "createdAt": 1784994314201,
-      "logMessageId": "1530601833507192843"
+      "logMessageId": "1530601833507192843",
+      "validatedAt": 1784996258025,
+      "validatorId": "1411724649036910673"
     }
   ]
 }
