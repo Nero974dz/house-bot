@@ -85,6 +85,10 @@ async function registerSlashCommands(client, token) {
       .addStringOption(o => o.setName("message").setDescription("Message à envoyer").setRequired(true).setMaxLength(1900))
       .toJSON(),
     new SlashCommandBuilder()
+      .setName("rouge")
+      .setDescription("Activer / désactiver le mode rouge — bloque toutes les transactions et le casino")
+      .toJSON(),
+    new SlashCommandBuilder()
       .setName("ban")
       .setDescription("Bannir un membre du serveur")
       .addUserOption(o => o.setName("membre").setDescription("Membre à bannir").setRequired(true))
