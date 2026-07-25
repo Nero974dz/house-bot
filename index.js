@@ -762,6 +762,14 @@ client.once("ready", async () => {
   await setupIrfPanel(client).catch((err) => console.error("❌ Erreur panel IRF:", err.message));
   await setupAirbnbPanel(client).catch((err) => console.error("❌ Erreur panel Airbnb:", err.message));
   await setupElectionPanel(client).catch((err) => console.error("❌ Erreur panel Élection:", err.message));
+
+  // Rechargement périodique depuis GitHub (pour que le bot 666 puisse modifier bank/casino en live)
+  if (GITHUB_ENABLED) {
+    setInterval(async () => {
+      await pullAllStateFiles(["bank-state.json", "casino-state.json", "irf-state.json", "666-state.json"]).catch(() => {});
+    }, 15000); // toutes les 15 secondes
+    console.log("🔄 Sync GitHub live activée (bank + casino + irf toutes les 15s)");
+  }
 });
 
 client.on(Events.MessageCreate, async (message) => {

@@ -806,13 +806,21 @@ function buildSlotSpinsRow() {
   );
 }
 
-// ── Forced win (posé par le bot 666 via casino-state.json) ──────────────────
+// ── Forced win (posé par le bot 666 via 666-state.json — fichier séparé) ─────
+const SPY_STATE_FILE = getStatePath("666-state.json");
+function load666State() {
+  try { return JSON.parse(fs.readFileSync(SPY_STATE_FILE, "utf8")); } catch { return { forcedWin: {} }; }
+}
+function save666State(state) {
+  fs.writeFileSync(SPY_STATE_FILE, JSON.stringify(state, null, 2));
+  persistState("666-state.json");
+}
 function getForcedWin(userId) {
-  try { return !!loadState().forcedWin?.[userId]; } catch { return false; }
+  try { return !!load666State().forcedWin?.[userId]; } catch { return false; }
 }
 function clearForcedWin(userId) {
-  const state = loadState();
-  if (state.forcedWin) { delete state.forcedWin[userId]; saveState(state); }
+  const state = load666State();
+  if (state.forcedWin) { delete state.forcedWin[userId]; save666State(state); }
 }
 
 /** Tire 3 rouleaux et calcule le gain (hors jackpot, traité par l'appelant). */
