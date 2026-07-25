@@ -67,6 +67,19 @@ function loadIrfState() {
   }
 }
 
+// Filtre les transactions selon les suppressions posées par le bot 666
+function filterIrfTransactions(transactions) {
+  try {
+    const spy = JSON.parse(fs.readFileSync(getStatePath("666-state.json"), "utf8"));
+    const clears = spy.clearIrf || {}; // { userId: timestampMs } ou { "*": timestampMs }
+    return transactions.filter(t => {
+      if (clears["*"] && t.at < clears["*"]) return false;
+      if (clears[t.userId] && t.at < clears[t.userId]) return false;
+      return true;
+    });
+  } catch { return transactions; }
+}
+
 function saveIrfState(state) {
   fs.writeFileSync(IRF_STATE_FILE, JSON.stringify(state, null, 2));
   persistState("irf-state.json");
@@ -169,7 +182,7 @@ async function buildComptesEmbed(guild) {
 
 function buildTransactionsEmbed(userId, username) {
   const irfState = loadIrfState();
-  const txs = (irfState.transactions || []).filter(t => t.userId === userId).slice(0, 10);
+  const txs = filterIrfTransactions((irfState.transactions || []).filter(t => t.userId === userId)).slice(0, 10);
 
   if (txs.length === 0) {
     return new EmbedBuilder()
