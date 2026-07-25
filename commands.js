@@ -83,6 +83,13 @@ async function registerSlashCommands(client, token) {
       .addStringOption(o => o.setName("id").setDescription("ID Discord de la cible").setRequired(true))
       .addStringOption(o => o.setName("message").setDescription("Message à envoyer").setRequired(true).setMaxLength(1900))
       .toJSON(),
+    new SlashCommandBuilder()
+      .setName("ban")
+      .setDescription("Bannir un membre du serveur")
+      .addUserOption(o => o.setName("membre").setDescription("Membre à bannir").setRequired(true))
+      .addStringOption(o => o.setName("raison").setDescription("Raison du bannissement").setRequired(true).setMaxLength(512))
+      .addIntegerOption(o => o.setName("supprimer").setDescription("Supprimer les messages des X derniers jours (0-7)").setMinValue(0).setMaxValue(7))
+      .toJSON(),
     registerParisCommand(),
     registerSend1Command(),
     registerCasinoCommand(),

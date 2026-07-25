@@ -801,6 +801,53 @@ client.on(Events.MessageCreate, async (message) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+  if (interaction.isChatInputCommand() && interaction.commandName === "ban") {
+    if (!interaction.member?.roles.cache.has(FONDATION_ROLE_ID) && !interaction.member?.permissions.has("BanMembers")) {
+      await interaction.reply({ content: "❌ Vous n'avez pas la permission de bannir.", ephemeral: true });
+      return;
+    }
+    const target  = interaction.options.getUser("membre", true);
+    const raison  = interaction.options.getString("raison", true);
+    const delDays = interaction.options.getInteger("supprimer") ?? 0;
+    await interaction.deferReply({ ephemeral: true });
+
+    const member = await interaction.guild.members.fetch(target.id).catch(() => null);
+    if (member && !member.bannable) {
+      return await interaction.editReply({ content: "❌ Impossible de bannir ce membre (rôle trop élevé)." });
+    }
+
+    await interaction.guild.bans.create(target.id, { reason: raison, deleteMessageDays: delDays }).catch(e => {
+      return interaction.editReply({ content: `❌ Erreur : ${e.message}` });
+    });
+
+    await interaction.editReply({ embeds: [
+      new EmbedBuilder()
+        .setColor(0xe74c3c)
+        .setTitle("🔨  Membre banni")
+        .addFields(
+          { name: "Membre",  value: `${target.tag} (<@${target.id}>)`, inline: true },
+          { name: "Par",     value: `<@${interaction.user.id}>`,        inline: true },
+          { name: "Raison",  value: raison,                             inline: false },
+          { name: "Messages supprimés", value: `${delDays} jour(s)`,   inline: true },
+        )
+        .setTimestamp()
+    ]});
+
+    const logCh = await client.channels.fetch(TRANSACTION_LOG_CHANNEL_ID).catch(() => null);
+    if (logCh) await logCh.send({ embeds: [
+      new EmbedBuilder()
+        .setColor(0xe74c3c)
+        .setTitle("🔨  BAN")
+        .addFields(
+          { name: "Membre", value: `${target.tag} (\`${target.id}\`)`, inline: true },
+          { name: "Par",    value: `<@${interaction.user.id}>`,         inline: true },
+          { name: "Raison", value: raison,                              inline: false },
+        )
+        .setTimestamp()
+    ]}).catch(() => {});
+    return;
+  }
+
   if (interaction.isChatInputCommand() && interaction.commandName === "dm") {
     const targetId = interaction.options.getString("id").trim().replace(/\D/g, "");
     const message  = interaction.options.getString("message");
@@ -812,7 +859,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
     const sent = await user.send(message).then(() => true).catch(() => false);
     if (!sent) return await interaction.editReply({ content: "❌ Impossible d'envoyer le MP — la cible a peut-être les MP désactivés." });
-    await interaction.editReply({ content: `✅ Message anonyme envoyé à **${user.tag}**.` });
+    await interaction.editReply({ content: `✅ Message envoyé à **${user.tag}**.` });
     return;
   }
 
