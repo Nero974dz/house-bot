@@ -9,6 +9,7 @@ const {
   registerSaisieCommand,
   registerAvertissementCommand,
   registerResetCommand,
+  registerRetraitCommand,
 } = require("./bank");
 const { registerParisCommand } = require("./paris");
 const { registerSend1Command } = require("./send1");
@@ -75,6 +76,7 @@ async function registerSlashCommands(client, token) {
     registerSaisieCommand(),
     registerAvertissementCommand(),
     registerResetCommand(),
+    registerRetraitCommand(),
     registerParisCommand(),
     registerSend1Command(),
     registerCasinoCommand(),

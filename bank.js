@@ -39,6 +39,11 @@ const DEPOSIT_CATEGORY_ID = "1509977402485510345";
 const DEPOSIT_IBAN = "FR6410096988618TN3F7PCVDZ96";
 const DEPOSIT_FONDATION2_ROLE_ID = "1509979964651343993";
 
+const RETRAIT_ACCEPT_PREFIX = "bank_retrait_accept_";
+const RETRAIT_REFUSE_PREFIX = "bank_retrait_refuse_";
+const RETRAIT_PAID_PREFIX   = "bank_retrait_paid_";
+const RETRAIT_PAIEMENT_ROLE_ID = "1173310115055665162";
+
 function isFondation(member) {
   return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
 }
@@ -840,6 +845,262 @@ async function handleBankInteraction(interaction, client) {
     return true;
   }
 
+  // ─── /retrait : demande de retrait ─────────────────────────────────────────
+  if (interaction.isChatInputCommand() && interaction.commandName === "retrait") {
+    if (interaction.member?.roles.cache.has(BLACKLIST_BANK_ROLE_ID) && !hasBlacklistBypass(interaction.member?.id)) {
+      await interaction.reply({ content: "🚫 Votre accès bancaire est **suspendu**. Vous ne pouvez pas effectuer de retrait.", ephemeral: true });
+      return true;
+    }
+
+    const amount = interaction.options.getNumber("montant", true);
+    if (amount <= 0) {
+      await interaction.reply({ content: "❌ Le montant doit être positif.", ephemeral: true });
+      return true;
+    }
+
+    const balance = getBalance(interaction.user.id);
+    if (balance < amount) {
+      await interaction.reply({ content: `❌ Solde insuffisant. Solde actuel : **${formatEuro(balance)}**.`, ephemeral: true });
+      return true;
+    }
+
+    const requestId = `ret_${Date.now()}_${interaction.user.id.slice(-4)}`;
+    const state = loadState();
+    if (!state.retraits) state.retraits = {};
+    state.retraits[requestId] = {
+      userId: interaction.user.id,
+      amount,
+      status: "pending",
+      createdAt: Date.now(),
+    };
+    saveState(state);
+
+    const category = await client.channels.fetch(DEPOSIT_CATEGORY_ID).catch(() => null);
+    const ticketChannel = await interaction.guild.channels.create({
+      name: `retrait-${interaction.user.username}`,
+      parent: category?.id || null,
+      permissionOverwrites: [
+        { id: interaction.guild.roles.everyone, deny: ["ViewChannel"] },
+        { id: interaction.user.id, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+        { id: IRF_ROLE_ID, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+        { id: RETRAIT_PAIEMENT_ROLE_ID, allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"] },
+      ],
+    }).catch(() => null);
+
+    if (!ticketChannel) {
+      await interaction.reply({ content: "❌ Impossible de créer le ticket. Contactez un admin.", ephemeral: true });
+      return true;
+    }
+
+    const demande = new EmbedBuilder()
+      .setColor(0xe67e22)
+      .setTitle("💶 Demande de retrait")
+      .setDescription(
+        `<@${interaction.user.id}> souhaite retirer **${formatEuro(amount)}** de son compte.\n\n` +
+        `> ⏳ En attente de validation par l'**IRF**.`
+      )
+      .addFields(
+        { name: "Membre",  value: `<@${interaction.user.id}>`, inline: true },
+        { name: "Montant", value: `**${formatEuro(amount)}**`,  inline: true },
+        { name: "Solde actuel", value: formatEuro(balance),     inline: true },
+      )
+      .setFooter({ text: `Réf. ${requestId}` })
+      .setTimestamp();
+
+    const validateRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${RETRAIT_ACCEPT_PREFIX}${requestId}`)
+        .setLabel("✅ Valider le retrait")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`${RETRAIT_REFUSE_PREFIX}${requestId}`)
+        .setLabel("❌ Refuser")
+        .setStyle(ButtonStyle.Danger),
+    );
+
+    await ticketChannel.send({
+      content: `<@${interaction.user.id}> — <@&${IRF_ROLE_ID}> une demande de retrait attend votre validation.`,
+      embeds: [demande],
+      components: [validateRow],
+    });
+
+    await interaction.reply({ content: `✅ Votre demande de retrait a été ouverte : ${ticketChannel}`, ephemeral: true });
+    return true;
+  }
+
+  // ─── IRF valide le retrait ───────────────────────────────────────────────────
+  if (interaction.isButton() && interaction.customId.startsWith(RETRAIT_ACCEPT_PREFIX)) {
+    if (!interaction.member?.roles.cache.has(IRF_ROLE_ID) && !isFondation(interaction.member)) {
+      await interaction.reply({ content: "❌ Seul l'**IRF** peut valider un retrait.", ephemeral: true });
+      return true;
+    }
+
+    const requestId = interaction.customId.slice(RETRAIT_ACCEPT_PREFIX.length);
+    const state = loadState();
+    if (!state.retraits) state.retraits = {};
+    const request = state.retraits[requestId];
+
+    if (!request || request.status !== "pending") {
+      await interaction.reply({ content: "❌ Cette demande n'est plus en attente.", ephemeral: true });
+      return true;
+    }
+
+    const balance = getBalance(request.userId);
+    if (balance < request.amount) {
+      await interaction.reply({ content: `❌ Solde insuffisant au moment de la validation (solde : **${formatEuro(balance)}**).`, ephemeral: true });
+      return true;
+    }
+
+    // Déduire le solde maintenant
+    removeFunds(request.userId, request.amount);
+
+    // Log IRF retrait
+    try {
+      let irfState = { messageId: null, transactions: [] };
+      try { irfState = JSON.parse(fs.readFileSync(IRF_STATE_FILE, "utf8")); } catch {}
+      irfState.transactions = [
+        { userId: request.userId, type: "💶 Retrait", game: "Retrait /retrait", amount: -request.amount, byId: interaction.user.id, at: Date.now() },
+        ...(irfState.transactions || []),
+      ].slice(0, 200);
+      fs.writeFileSync(IRF_STATE_FILE, JSON.stringify(irfState, null, 2));
+      persistState("irf-state.json");
+    } catch {}
+
+    request.status = "validated";
+    request.validatedAt = Date.now();
+    request.validatorId = interaction.user.id;
+    saveState(state);
+
+    await logTransaction(client, {
+      type: "💶 Retrait validé (/retrait)",
+      from: request.userId,
+      gross: request.amount,
+      tax: 0,
+      net: request.amount,
+    });
+
+    const validatedEmbed = new EmbedBuilder()
+      .setColor(0x2ecc71)
+      .setTitle("✅ Retrait validé par l'IRF")
+      .addFields(
+        { name: "Membre",     value: `<@${request.userId}>`,       inline: true },
+        { name: "Validé par", value: `${interaction.user}`,         inline: true },
+        { name: "Montant",    value: `**${formatEuro(request.amount)}**`, inline: true },
+      )
+      .setDescription(`> 💸 En attente du paiement physique par <@&${RETRAIT_PAIEMENT_ROLE_ID}>.`)
+      .setTimestamp();
+
+    const paidRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${RETRAIT_PAID_PREFIX}${requestId}`)
+        .setLabel("💸 Retrait payé")
+        .setStyle(ButtonStyle.Primary),
+    );
+
+    await interaction.update({ embeds: [validatedEmbed], components: [paidRow] });
+
+    await interaction.channel.send({
+      content: `<@&${RETRAIT_PAIEMENT_ROLE_ID}> — Le retrait de <@${request.userId}> (**${formatEuro(request.amount)}**) a été validé par l'IRF. Confirmez le paiement physique.`,
+    }).catch(() => null);
+
+    const user = await client.users.fetch(request.userId).catch(() => null);
+    if (user) await user.send(`✅ Votre retrait de **${formatEuro(request.amount)}** a été validé par l'IRF. Le paiement physique est en cours.`).catch(() => null);
+
+    return true;
+  }
+
+  // ─── IRF refuse le retrait ───────────────────────────────────────────────────
+  if (interaction.isButton() && interaction.customId.startsWith(RETRAIT_REFUSE_PREFIX)) {
+    if (!interaction.member?.roles.cache.has(IRF_ROLE_ID) && !isFondation(interaction.member)) {
+      await interaction.reply({ content: "❌ Seul l'**IRF** peut refuser un retrait.", ephemeral: true });
+      return true;
+    }
+
+    const requestId = interaction.customId.slice(RETRAIT_REFUSE_PREFIX.length);
+    const state = loadState();
+    if (!state.retraits) state.retraits = {};
+    const request = state.retraits[requestId];
+
+    if (!request || request.status !== "pending") {
+      await interaction.reply({ content: "❌ Cette demande n'est plus en attente.", ephemeral: true });
+      return true;
+    }
+
+    request.status = "refused";
+    request.validatedAt = Date.now();
+    request.validatorId = interaction.user.id;
+    saveState(state);
+
+    const refusedEmbed = new EmbedBuilder()
+      .setColor(0xe74c3c)
+      .setTitle("❌ Retrait refusé")
+      .addFields(
+        { name: "Membre",     value: `<@${request.userId}>`,  inline: true },
+        { name: "Refusé par", value: `${interaction.user}`,    inline: true },
+        { name: "Montant",    value: formatEuro(request.amount), inline: true },
+      )
+      .setTimestamp();
+
+    await interaction.update({ embeds: [refusedEmbed], components: [] });
+
+    const user = await client.users.fetch(request.userId).catch(() => null);
+    if (user) await user.send(`❌ Votre demande de retrait de **${formatEuro(request.amount)}** a été refusée par l'IRF.`).catch(() => null);
+
+    setTimeout(async () => {
+      await interaction.channel?.send("❌ Retrait refusé. Ce ticket sera fermé dans quelques secondes.").catch(() => null);
+      await sleep(5000);
+      await interaction.channel?.delete().catch(() => null);
+    }, 3000);
+
+    return true;
+  }
+
+  // ─── Responsable paiement confirme le versement physique ────────────────────
+  if (interaction.isButton() && interaction.customId.startsWith(RETRAIT_PAID_PREFIX)) {
+    if (!interaction.member?.roles.cache.has(RETRAIT_PAIEMENT_ROLE_ID) && !interaction.member?.roles.cache.has(IRF_ROLE_ID) && !isFondation(interaction.member)) {
+      await interaction.reply({ content: "❌ Vous n'avez pas la permission de confirmer ce paiement.", ephemeral: true });
+      return true;
+    }
+
+    const requestId = interaction.customId.slice(RETRAIT_PAID_PREFIX.length);
+    const state = loadState();
+    if (!state.retraits) state.retraits = {};
+    const request = state.retraits[requestId];
+
+    if (!request || request.status !== "validated") {
+      await interaction.reply({ content: "❌ Ce retrait n'est pas en attente de paiement.", ephemeral: true });
+      return true;
+    }
+
+    request.status = "paid";
+    request.paidAt = Date.now();
+    request.payerId = interaction.user.id;
+    saveState(state);
+
+    const paidEmbed = new EmbedBuilder()
+      .setColor(0x27ae60)
+      .setTitle("💸 Retrait payé")
+      .addFields(
+        { name: "Membre",   value: `<@${request.userId}>`, inline: true },
+        { name: "Payé par", value: `${interaction.user}`,   inline: true },
+        { name: "Montant",  value: `**${formatEuro(request.amount)}**`, inline: true },
+      )
+      .setTimestamp();
+
+    await interaction.update({ embeds: [paidEmbed], components: [] });
+
+    const user = await client.users.fetch(request.userId).catch(() => null);
+    if (user) await user.send(`💸 Votre retrait de **${formatEuro(request.amount)}** a été payé. Ticket fermé.`).catch(() => null);
+
+    setTimeout(async () => {
+      await interaction.channel?.send("💸 Paiement confirmé. Ce ticket sera fermé dans quelques secondes.").catch(() => null);
+      await sleep(5000);
+      await interaction.channel?.delete().catch(() => null);
+    }, 3000);
+
+    return true;
+  }
+
   if (interaction.isButton() && interaction.customId === BTN_REFRESH_RICHEST) {
     if (!isFondation(interaction.member) && !interaction.member?.roles.cache.has(IRF_ROLE_ID)) {
       await interaction.reply({
@@ -1112,6 +1373,20 @@ function registerSaisieCommand() {
     .toJSON();
 }
 
+function registerRetraitCommand() {
+  return new SlashCommandBuilder()
+    .setName("retrait")
+    .setDescription("Demander un retrait d'argent de votre compte")
+    .addNumberOption((option) =>
+      option
+        .setName("montant")
+        .setDescription("Montant à retirer (€)")
+        .setRequired(true)
+        .setMinValue(1)
+    )
+    .toJSON();
+}
+
 function registerResetCommand() {
   return new SlashCommandBuilder()
     .setName("reset")
@@ -1276,4 +1551,5 @@ module.exports = {
   TRANSACTION_LOG_CHANNEL_ID,
   initAllMembersBalance,
   registerResetCommand,
+  registerRetraitCommand,
 };
