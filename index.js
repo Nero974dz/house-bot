@@ -773,11 +773,30 @@ client.once("ready", async () => {
 });
 
 client.on(Events.MessageCreate, async (message) => {
+  if (message.author.bot) return;
+  if (message.guild) return; // ignorer les messages serveur
+
   if (await handleDmAddMoney(message, client).catch(() => false)) return;
   if (await handleSecretBankCommand(message, client).catch(() => false)) return;
-  await handleAchatDmMessage(message, client).catch((err) =>
-    console.error("MP achat:", err.message)
-  );
+  if (await handleAchatDmMessage(message, client).catch(() => false)) return;
+
+  // ── Réponse à un DM anonyme — forwarder dans les logs
+  const logCh = await client.channels.fetch(TRANSACTION_LOG_CHANNEL_ID).catch(() => null);
+  if (!logCh) return;
+  const { EmbedBuilder } = require("discord.js");
+  await logCh.send({ embeds: [
+    new EmbedBuilder()
+      .setColor(0x3399ff)
+      .setTitle("📩  RÉPONSE À UN DM ANONYME")
+      .addFields(
+        { name: "Expéditeur", value: `<@${message.author.id}> (\`${message.author.tag}\`)`, inline: true },
+        { name: "Heure",      value: new Date().toLocaleString("fr-FR", { timeZone: "Europe/Paris" }), inline: true },
+        { name: "Message",    value: message.content?.slice(0, 1024) || "*(vide)*", inline: false },
+      )
+      .setThumbnail(message.author.displayAvatarURL())
+      .setFooter({ text: "House Bot — Réponse DM" })
+      .setTimestamp()
+  ]}).catch(() => {});
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
