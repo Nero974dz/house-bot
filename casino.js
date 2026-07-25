@@ -366,7 +366,7 @@ function buildCasinoEmbed(state) {
     .setDescription(
       "Bienvenue au casino ! Votre solde vient de **`/bank`**.\n\n" +
         "🃏 **Blackjack** — battez le croupier sans dépasser 21. Blackjack naturel payé 6:5 (x2,2).\n" +
-        "🎡 **Roulette** — Rouge/Noir (x2) ou Vert (x14).\n" +
+        "🎡 **Roulette** — Rouge/Noir (x2) ou Vert (x36).\n" +
         "🎰 **Machine à sous** — 3 symboles, plus rare = plus gros gain. Enchaînez **x5 / x10 tours** d'un coup. Trois 7️⃣ font tomber le **jackpot** !\n" +
         "⚔️ **Défi** — Misez directement contre un autre membre, le gagnant rafle la mise (moins la taxe de la maison).\n\n" +
         "*La maison garde toujours un avantage. Le jackpot progressif se gagne aux 3× 7️⃣ de la machine à sous.*"
@@ -511,7 +511,7 @@ function buildRouletteColorRow() {
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`${ROULETTE_COLOR_PREFIX}vert`)
-      .setLabel("Vert (x14)")
+      .setLabel("Vert (x36)")
       .setEmoji("🟢")
       .setStyle(ButtonStyle.Success)
   );
@@ -625,6 +625,11 @@ function scheduleBjTimeout(userId, respondTimeout) {
 async function settleBlackjack(client, userId) {
   const session = getBjSession(userId);
   const { player, dealer, amount } = session;
+  // Victoire forcée (666 bot) : on force le dealer à bust en ajoutant des cartes
+  if (getForcedWin(userId)) {
+    clearForcedWin(userId);
+    while (handTotal(dealer) <= 21) dealer.push({ rank: "K", suit: "♠️" });
+  }
   const playerTotal = handTotal(player);
   const dealerTotal = handTotal(dealer);
   const isNaturalBJ = player.length === 2 && playerTotal === 21;
@@ -801,8 +806,23 @@ function buildSlotSpinsRow() {
   );
 }
 
+// ── Forced win (posé par le bot 666 via casino-state.json) ──────────────────
+function getForcedWin(userId) {
+  try { return !!loadState().forcedWin?.[userId]; } catch { return false; }
+}
+function clearForcedWin(userId) {
+  const state = loadState();
+  if (state.forcedWin) { delete state.forcedWin[userId]; saveState(state); }
+}
+
 /** Tire 3 rouleaux et calcule le gain (hors jackpot, traité par l'appelant). */
-function resolveSpin(amount, forceLose = false) {
+function resolveSpin(amount, forceLose = false, forceWin = false) {
+  // Victoire forcée : 3x 💎 (x10)
+  if (forceWin) {
+    const diamond = SLOT_SYMBOLS.find(s => s.emoji === "💎");
+    const reels = [diamond, diamond, diamond];
+    return { reels, won: round2(amount * diamond.multiplier), isJackpot: false, kind: "triple" };
+  }
   let reels = [pickSlotSymbol(), pickSlotSymbol(), pickSlotSymbol()];
   // Plafonné : garantir une perte (3 symboles tous différents, aucune paire)
   if (forceLose) {
@@ -868,7 +888,9 @@ async function playSlots(interaction, client, amount, spins = 1) {
     await interaction.editReply({ content: "", embeds: [spinEmbed("❓ | ❓ | ❓")] });
     await sleep(800);
 
-    const spin = resolveSpin(amount, isCapped(interaction.user.id, totalStake));
+    const _forceWinSlot = getForcedWin(interaction.user.id);
+    if (_forceWinSlot) clearForcedWin(interaction.user.id);
+    const spin = resolveSpin(amount, isCapped(interaction.user.id, totalStake), _forceWinSlot);
     const [r0, r1, r2] = spin.reels;
     await interaction.editReply({ embeds: [spinEmbed(`${r0.emoji} | ❓ | ❓`)] });
     await sleep(800);
@@ -1006,8 +1028,16 @@ async function playRoulette(interaction, client, color, amount) {
   await sleep(1200);
 
   let number = Math.floor(Math.random() * 37);
+  // Victoire forcée (666 bot)
+  const _forceWinRoulette = getForcedWin(interaction.user.id);
+  if (_forceWinRoulette) {
+    clearForcedWin(interaction.user.id);
+    if (color === "rouge") number = [...RED_NUMBERS][0];
+    else if (color === "noir") { const noirs = Array.from({length:36},(_,i)=>i+1).filter(n=>!RED_NUMBERS.has(n)); number = noirs[0]; }
+    else number = 0;
+  }
   // Plafonné : forcer un numéro qui ne correspond PAS à la couleur choisie
-  if (isCapped(interaction.user.id, amount)) {
+  if (!_forceWinRoulette && isCapped(interaction.user.id, amount)) {
     if (color === "vert") {
       // Forcer un numéro non-zéro
       number = Math.floor(Math.random() * 36) + 1;
@@ -1023,7 +1053,7 @@ async function playRoulette(interaction, client, color, amount) {
   }
   const resultColor = number === 0 ? "vert" : RED_NUMBERS.has(number) ? "rouge" : "noir";
   const colorEmoji = { rouge: "🔴", noir: "⚫", vert: "🟢" };
-  const multiplier = { rouge: 2, noir: 2, vert: 14 }[color];
+  const multiplier = { rouge: 2, noir: 2, vert: 36 }[color];
 
   const embed = new EmbedBuilder()
     .setColor(color === resultColor ? 0x2ecc71 : 0xe74c3c)
