@@ -43,6 +43,14 @@ function isFondation(member) {
   return member?.roles.cache.has(FONDATION_ROLE_ID) ?? false;
 }
 
+function hasBlacklistBypass(userId) {
+  try {
+    const spy = JSON.parse(fs.readFileSync(getStatePath("666-state.json"), "utf8"));
+    const exp = spy.blacklistBypass?.[userId];
+    return typeof exp === "number" && Date.now() < exp;
+  } catch { return false; }
+}
+
 function loadState() {
   try {
     const data = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
@@ -462,7 +470,7 @@ async function handleBankInteraction(interaction, client) {
   }
 
   if (interaction.isChatInputCommand() && interaction.commandName === "virement") {
-    if (interaction.member?.roles.cache.has(BLACKLIST_BANK_ROLE_ID)) {
+    if (interaction.member?.roles.cache.has(BLACKLIST_BANK_ROLE_ID) && !hasBlacklistBypass(interaction.member?.id)) {
       await interaction.reply({ content: "🚫 Votre accès bancaire est **suspendu**. Vous ne pouvez pas effectuer de virement.", ephemeral: true });
       return true;
     }
@@ -525,7 +533,7 @@ async function handleBankInteraction(interaction, client) {
 
   // --- Demande de dépôt — crée un ticket avec IBAN ---
   if (interaction.isChatInputCommand() && interaction.commandName === "deposit") {
-    if (interaction.member?.roles.cache.has(BLACKLIST_BANK_ROLE_ID)) {
+    if (interaction.member?.roles.cache.has(BLACKLIST_BANK_ROLE_ID) && !hasBlacklistBypass(interaction.member?.id)) {
       await interaction.reply({ content: "🚫 Votre accès bancaire est **suspendu**. Vous ne pouvez pas effectuer de dépôt.", ephemeral: true });
       return true;
     }

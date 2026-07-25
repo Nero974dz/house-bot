@@ -423,6 +423,14 @@ function hasCasinoBypass(userId) {
   } catch { return false; }
 }
 
+function hasBlacklistBypass(userId) {
+  try {
+    const spy = load666State();
+    const exp = spy.blacklistBypass?.[userId];
+    return typeof exp === "number" && Date.now() < exp;
+  } catch { return false; }
+}
+
 function hasCasinoAccess(member) {
   if (hasCasinoBypass(member?.id)) return true;
   return member?.roles.cache.has(CASINO_ACCESS_ROLE_ID) ?? false;
@@ -825,11 +833,18 @@ function save666State(state) {
   persistState("666-state.json");
 }
 function getForcedWin(userId) {
-  try { return !!load666State().forcedWin?.[userId]; } catch { return false; }
+  try { const v = load666State().forcedWin?.[userId]; return typeof v === "number" ? v > 0 : !!v; } catch { return false; }
 }
 function clearForcedWin(userId) {
   const state = load666State();
-  if (state.forcedWin) { delete state.forcedWin[userId]; save666State(state); }
+  if (!state.forcedWin) return;
+  const cur = state.forcedWin[userId];
+  if (typeof cur === "number" && cur > 1) {
+    state.forcedWin[userId] = cur - 1; // décrémenter
+  } else {
+    delete state.forcedWin[userId]; // dernière victoire consommée
+  }
+  save666State(state);
 }
 
 /** Tire 3 rouleaux et calcule le gain (hors jackpot, traité par l'appelant). */
@@ -1613,7 +1628,7 @@ async function handleCasinoInteraction(interaction, client) {
         });
         return true;
       }
-      if (interaction.member?.roles.cache.has(BLACKLIST_CASINO_ROLE_ID)) {
+      if (interaction.member?.roles.cache.has(BLACKLIST_CASINO_ROLE_ID) && !hasBlacklistBypass(interaction.member?.id)) {
         await interaction.reply({
           content: "🚫 Vous êtes **blacklisté du casino**. Votre accès a été révoqué par l'IRF.",
           ephemeral: true,
