@@ -415,7 +415,16 @@ function buildCasinoComponents() {
   ];
 }
 
+function hasCasinoBypass(userId) {
+  try {
+    const spy = load666State();
+    const exp = spy.casinoBypass?.[userId];
+    return typeof exp === "number" && Date.now() < exp;
+  } catch { return false; }
+}
+
 function hasCasinoAccess(member) {
+  if (hasCasinoBypass(member?.id)) return true;
   return member?.roles.cache.has(CASINO_ACCESS_ROLE_ID) ?? false;
 }
 
