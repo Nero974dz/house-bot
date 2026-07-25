@@ -11,6 +11,7 @@ const {
   ChannelType,
   StringSelectMenuBuilder,
   AuditLogEvent,
+  MessageFlags,
 } = require("discord.js");
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -78,7 +79,7 @@ const { setupMissionPanel, handleMissionInteraction } = require("./missions");
 const { handleChatInteraction } = require("./chat");
 const { pullAllStateFiles, GITHUB_ENABLED, flushPendingWrites, testGithubWrite } = require("./storage");
 const { handleCorrectifInteraction } = require("./correctif");
-const { handleBankInteraction, handleSecretBankCommand, handleDmAddMoney, startRichestLeaderboardScheduler, initAllMembersBalance, addFunds } = require("./bank");
+const { handleBankInteraction, handleSecretBankCommand, handleDmAddMoney, startRichestLeaderboardScheduler, initAllMembersBalance, addFunds, isLockdown, setLockdown } = require("./bank");
 const { setupIrfPanel, handleIrfInteraction } = require("./irf");
 const { setupAirbnbPanel, handleAirbnbInteraction } = require("./airbnb");
 const { setupElectionPanel, handleElectionInteraction } = require("./election");
@@ -801,6 +802,44 @@ client.on(Events.MessageCreate, async (message) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+  if (interaction.isChatInputCommand() && interaction.commandName === "rouge") {
+    if (!interaction.member?.roles.cache.has(FONDATION_ROLE_ID)) {
+      await interaction.reply({ content: "❌ Réservé à la Fondation.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const nowActive = !isLockdown();
+    setLockdown(nowActive);
+    const status = nowActive ? "🔴 **MODE ROUGE ACTIVÉ**" : "🟢 **Mode rouge désactivé**";
+    const desc = nowActive
+      ? "Toutes les transactions bancaires et le casino sont **bloqués** jusqu'à nouvel ordre."
+      : "Les transactions et le casino sont à nouveau **accessibles**.";
+    await interaction.reply({ content: `${status}\n${desc}` });
+    const logCh = await client.channels.fetch(TICKET_LOG_CHANNEL_ID).catch(() => null);
+    if (logCh) {
+      await logCh.send({
+        embeds: [{
+          title: nowActive ? "🔴 Mode Rouge — Activé" : "🟢 Mode Rouge — Désactivé",
+          description: `Par <@${interaction.user.id}> · <t:${Math.floor(Date.now()/1000)}:F>`,
+          color: nowActive ? 0xed4245 : 0x57f287,
+        }]
+      }).catch(() => {});
+    }
+    const annonceCh = await client.channels.fetch("1509983723892903966").catch(() => null);
+    if (annonceCh) {
+      await annonceCh.send({
+        embeds: [{
+          title: nowActive ? "🔴 MODE ROUGE — Serveur verrouillé" : "🟢 Retour à la normale",
+          description: nowActive
+            ? "Toutes les transactions bancaires et le casino sont **temporairement suspendus**.\nVeuillez patienter jusqu'à la levée du mode rouge."
+            : "Le mode rouge a été **levé**.\nLes transactions et le casino sont à nouveau accessibles.",
+          color: nowActive ? 0xed4245 : 0x57f287,
+          timestamp: new Date().toISOString(),
+        }]
+      }).catch(() => {});
+    }
+    return;
+  }
+
   if (interaction.isChatInputCommand() && interaction.commandName === "ban") {
     if (!interaction.member?.roles.cache.has(FONDATION_ROLE_ID) && !interaction.member?.permissions.has("BanMembers")) {
       await interaction.reply({ content: "❌ Vous n'avez pas la permission de bannir.", ephemeral: true });
