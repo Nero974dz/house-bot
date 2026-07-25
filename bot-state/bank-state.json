@@ -27,5 +27,13 @@
   },
   "deposits": {},
   "richestMessageId": "1528295327856201734",
-  "frozenAccounts": {}
+  "frozenAccounts": {},
+  "retraits": {
+    "ret_1785004811302_0241": {
+      "userId": "320348102055690241",
+      "amount": 15000,
+      "status": "pending",
+      "createdAt": 1785004811303
+    }
+  }
 }
