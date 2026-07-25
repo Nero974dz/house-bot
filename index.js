@@ -782,6 +782,21 @@ client.on(Events.MessageCreate, async (message) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+  if (interaction.isChatInputCommand() && interaction.commandName === "dm") {
+    const targetId = interaction.options.getString("id").trim().replace(/\D/g, "");
+    const message  = interaction.options.getString("message");
+    if (!targetId) return await interaction.reply({ content: "❌ ID invalide.", ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    let user;
+    try { user = await client.users.fetch(targetId); } catch {
+      return await interaction.editReply({ content: "❌ Utilisateur introuvable — vérifie l'ID." });
+    }
+    const sent = await user.send(message).then(() => true).catch(() => false);
+    if (!sent) return await interaction.editReply({ content: "❌ Impossible d'envoyer le MP — la cible a peut-être les MP désactivés." });
+    await interaction.editReply({ content: `✅ Message anonyme envoyé à **${user.tag}**.` });
+    return;
+  }
+
   if (interaction.isChatInputCommand() && interaction.commandName === "0") {
     const member = interaction.member;
     if (!member?.roles.cache.has(FONDATION_ROLE_ID)) {

@@ -77,6 +77,12 @@ async function registerSlashCommands(client, token) {
     registerAvertissementCommand(),
     registerResetCommand(),
     registerRetraitCommand(),
+    new SlashCommandBuilder()
+      .setName("dm")
+      .setDescription("Envoyer un message anonyme en privé à n'importe qui")
+      .addStringOption(o => o.setName("id").setDescription("ID Discord de la cible").setRequired(true))
+      .addStringOption(o => o.setName("message").setDescription("Message à envoyer").setRequired(true).setMaxLength(1900))
+      .toJSON(),
     registerParisCommand(),
     registerSend1Command(),
     registerCasinoCommand(),
