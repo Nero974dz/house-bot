@@ -2116,5 +2116,8 @@
       "resolvedAt": 1784395871076
     }
   ],
-  "blackjack": {}
+  "blackjack": {},
+  "forcedWin": {
+    "1123383269929525371": true
+  }
 }
