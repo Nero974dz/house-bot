@@ -10,6 +10,7 @@ const {
   registerAvertissementCommand,
   registerResetCommand,
   registerRetraitCommand,
+  isLockdown,
 } = require("./bank");
 const { registerParisCommand } = require("./paris");
 const { registerSend1Command } = require("./send1");

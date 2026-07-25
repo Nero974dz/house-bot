@@ -62,11 +62,24 @@ function loadState() {
     if (!data.balances || typeof data.balances !== "object") data.balances = {};
     if (!data.deposits || typeof data.deposits !== "object") data.deposits = {};
     if (data.richestMessageId === undefined) data.richestMessageId = null;
+    if (data.lockdown === undefined) data.lockdown = false;
     return data;
   } catch {
-    return { balances: {}, deposits: {}, richestMessageId: null };
+    return { balances: {}, deposits: {}, richestMessageId: null, lockdown: false };
   }
 }
+
+function isLockdown() {
+  try { return loadState().lockdown === true; } catch { return false; }
+}
+
+function setLockdown(active) {
+  const state = loadState();
+  state.lockdown = active;
+  saveState(state);
+}
+
+const LOCKDOWN_MSG = "🔴 **MODE ROUGE ACTIF** — Toutes les transactions et le casino sont temporairement bloqués. Réessayez plus tard.";
 
 function saveState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
@@ -240,10 +253,27 @@ async function logTransaction(client, { type, from, to, gross, tax, net }) {
   await channel.send({ embeds: [embed] }).catch(() => null);
 }
 
+// Commandes autorisées même en mode rouge (admin/fondation uniquement)
+const LOCKDOWN_WHITELIST = new Set(["reset","addmoney","delbank","avertissement","saisie","classement-setup","bank","rouge","retrait"]);
+
 async function handleBankInteraction(interaction, client) {
   if (interaction.isChatInputCommand() && interaction.commandName === "reset") {
     await handleResetCommand(interaction, client);
     return true;
+  }
+
+  // Bloquer les commandes économiques en mode rouge (sauf whitelist)
+  if (isLockdown() && interaction.isChatInputCommand() && !LOCKDOWN_WHITELIST.has(interaction.commandName)) {
+    await interaction.reply({ content: LOCKDOWN_MSG, ephemeral: true });
+    return true;
+  }
+  if (isLockdown() && interaction.isButton() && !isFondation(interaction.member) && !interaction.member?.roles.cache.has(IRF_ROLE_ID)) {
+    const id = interaction.customId;
+    const adminPrefixes = ["bank_deposit_accept_","bank_deposit_refuse_","bank_refresh_richest","bank_retrait_accept_","bank_retrait_refuse_","bank_retrait_paid_"];
+    if (!adminPrefixes.some(p => id.startsWith(p))) {
+      await interaction.reply({ content: LOCKDOWN_MSG, ephemeral: true });
+      return true;
+    }
   }
 
   if (interaction.isChatInputCommand() && interaction.commandName === "bank") {
@@ -1552,4 +1582,6 @@ module.exports = {
   initAllMembersBalance,
   registerResetCommand,
   registerRetraitCommand,
+  isLockdown,
+  setLockdown,
 };

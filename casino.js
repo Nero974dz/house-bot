@@ -1390,6 +1390,19 @@ function bj1v1Winner(duel) {
 }
 
 async function handleCasinoInteraction(interaction, client) {
+  // Bloquer tout le casino en mode rouge (sauf casino-setup pour la fondation)
+  if (interaction.commandName !== "casino-setup") {
+    try {
+      const { isLockdown } = require("./bank");
+      if (isLockdown()) {
+        const msg = "🔴 **MODE ROUGE ACTIF** — Le casino est temporairement fermé.";
+        if (interaction.replied || interaction.deferred) await interaction.followUp({ content: msg, ephemeral: true });
+        else await interaction.reply({ content: msg, ephemeral: true });
+        return true;
+      }
+    } catch {}
+  }
+
   if (interaction.isChatInputCommand() && interaction.commandName === "casino-setup") {
     if (!isFondation(interaction.member)) {
       await interaction.reply({
