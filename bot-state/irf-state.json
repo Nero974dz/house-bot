@@ -2,6 +2,30 @@
   "messageId": "1527837157245452469",
   "transactions": [
     {
+      "userId": "320348102055690241",
+      "type": "🔁 Virement envoyé",
+      "game": "vers <@1528200495389343784>",
+      "amount": -19000,
+      "byId": "320348102055690241",
+      "at": 1784991708035
+    },
+    {
+      "userId": "1528200495389343784",
+      "type": "🔁 Virement reçu",
+      "game": "de <@320348102055690241>",
+      "amount": 14250,
+      "byId": "320348102055690241",
+      "at": 1784991708035
+    },
+    {
+      "userId": "1509969106999443678",
+      "type": "🏛️ Argent Taxe",
+      "game": "virement",
+      "amount": 4750,
+      "byId": "320348102055690241",
+      "at": 1784991708034
+    },
+    {
       "byId": "casino",
       "at": 1784989991894,
       "userId": "1123383269929525371",
@@ -4473,33 +4497,6 @@
       "game": "Roulette",
       "stake": 400000,
       "amount": 400000
-    },
-    {
-      "byId": "casino",
-      "at": 1784485537737,
-      "userId": "1445816241116807238",
-      "type": "💀 Défaite Casino",
-      "game": "Roulette",
-      "stake": 30000,
-      "amount": -30000
-    },
-    {
-      "byId": "casino",
-      "at": 1784485528317,
-      "userId": "1445816241116807238",
-      "type": "🏆 Victoire Casino",
-      "game": "Roulette",
-      "stake": 200000,
-      "amount": 200000
-    },
-    {
-      "byId": "casino",
-      "at": 1784485266880,
-      "userId": "1411724649036910673",
-      "type": "🏆 Victoire Casino",
-      "game": "Roulette",
-      "stake": 500,
-      "amount": 500
     }
   ]
 }
