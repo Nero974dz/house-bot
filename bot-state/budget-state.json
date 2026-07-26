@@ -1,35 +1,6 @@
 {
   "messageId": "1510685400857972776",
-  "weekStart": "2026-07-20",
+  "weekStart": "2026-07-27",
   "totalBudget": 5000,
-  "expenses": [
-    {
-      "id": "achat_1784925525263_5371",
-      "type": "achat",
-      "amount": 1800,
-      "label": "J'aimerai acheter un pc gamer svp",
-      "reason": "C'est le setup complet j'aimerai bien pouvoir vivre de ma passion",
-      "authorId": "1123383269929525371",
-      "authorTag": "ellenmcx",
-      "status": "approved",
-      "createdAt": 1784925525263,
-      "logMessageId": "1530313311915081833",
-      "validatedAt": 1784928935257,
-      "validatorId": "1411724649036910673"
-    },
-    {
-      "id": "achat_1784994314201_5705",
-      "type": "achat",
-      "amount": 900,
-      "label": "Un Télephone",
-      "reason": "Mon tel bug trop surtout avec la chaleur",
-      "authorId": "1459602308168945705",
-      "authorTag": "iziiiiiiiiiiiii",
-      "status": "approved",
-      "createdAt": 1784994314201,
-      "logMessageId": "1530601833507192843",
-      "validatedAt": 1784996258025,
-      "validatorId": "1411724649036910673"
-    }
-  ]
+  "expenses": []
 }
