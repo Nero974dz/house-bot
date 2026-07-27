@@ -32,8 +32,10 @@
     "ret_1785004811302_0241": {
       "userId": "320348102055690241",
       "amount": 15000,
-      "status": "pending",
-      "createdAt": 1785004811303
+      "status": "validated",
+      "createdAt": 1785004811303,
+      "validatedAt": 1785110788242,
+      "validatorId": "1411724649036910673"
     }
   },
   "lockdown": false
