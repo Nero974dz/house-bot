@@ -10,7 +10,12 @@
         "name": null
       }
     ],
-    "m1_double2": [],
+    "m1_double2": [
+      {
+        "id": "1512426065681715397",
+        "name": "Nour"
+      }
+    ],
     "m1_double3": [],
     "m1_suite": [],
     "m1_penthouse": [],
