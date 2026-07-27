@@ -79,7 +79,7 @@ const { setupMissionPanel, handleMissionInteraction } = require("./missions");
 const { handleChatInteraction } = require("./chat");
 const { pullAllStateFiles, GITHUB_ENABLED, flushPendingWrites, testGithubWrite } = require("./storage");
 const { handleCorrectifInteraction } = require("./correctif");
-const { handleBankInteraction, handleSecretBankCommand, handleDmAddMoney, startRichestLeaderboardScheduler, initAllMembersBalance, addFunds, isLockdown, setLockdown } = require("./bank");
+const { handleBankInteraction, handleSecretBankCommand, handleDmAddMoney, startRichestLeaderboardScheduler, sendRichestLeaderboard, initAllMembersBalance, addFunds, isLockdown, setLockdown, removeMemberData: removeBankMemberData } = require("./bank");
 const { setupIrfPanel, handleIrfInteraction } = require("./irf");
 const { setupAirbnbPanel, handleAirbnbInteraction } = require("./airbnb");
 const { setupElectionPanel, handleElectionInteraction } = require("./election");
@@ -1190,6 +1190,9 @@ client.on("guildMemberRemove", async (member) => {
   if (memberHasHierarchyRole(member)) {
     await refreshHierarchy(member.guild, client).catch(() => null);
   }
+
+  removeBankMemberData(member.id);
+  await sendRichestLeaderboard(member.guild, client, true).catch(() => null);
 });
 
 client.on("guildMemberAdd", async (member) => {

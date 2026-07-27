@@ -82,6 +82,13 @@ function getUserData(state, userId) {
   return state.users[userId];
 }
 
+/** Supprime les données d'un membre parti/banni pour qu'il disparaisse du classement. */
+function removeMemberData(userId) {
+  const state = loadState();
+  delete state.users[userId];
+  saveState(state);
+}
+
 function containsInsult(text) {
   if (!text) return false;
   return INSULT_PATTERNS.some((p) => p.test(text));
@@ -413,6 +420,7 @@ module.exports = {
   handleLevelCommand,
   handleLeaderboardInteraction,
   startLeaderboardScheduler,
+  removeMemberData,
   LEVEL_CHANNEL_ID,
   LEADERBOARD_CHANNEL_ID,
   MESSAGE_LEVELS,

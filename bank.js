@@ -199,6 +199,13 @@ function hasEnough(userId, amount) {
   return getBalance(userId) >= amount;
 }
 
+/** Supprime les données d'un membre parti/banni pour qu'il disparaisse du classement. */
+function removeMemberData(userId) {
+  const state = loadState();
+  delete state.balances[userId];
+  saveState(state);
+}
+
 /** Initialise tous les membres du serveur à DEFAULT_BALANCE s'ils n'ont pas encore de compte.
  *  Appelée au démarrage après la synchronisation GitHub. */
 async function initAllMembersBalance(guild) {
@@ -1552,6 +1559,7 @@ module.exports = {
   addFunds,
   removeFunds,
   hasEnough,
+  removeMemberData,
   formatEuro,
   applyTax,
   applyDepositTax,
