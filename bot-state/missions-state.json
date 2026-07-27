@@ -22,10 +22,10 @@
       "price": "500 €",
       "deadline": "Aujourd'hui",
       "createdAt": 1784877777938,
-      "status": "open",
-      "takerId": null,
-      "ticketChannelId": null,
-      "takenAt": null,
+      "status": "taken",
+      "takerId": "320348102055690241",
+      "ticketChannelId": "1531090546343546931",
+      "takenAt": 1785110832321,
       "completedAt": null
     }
   ]
