@@ -2,6 +2,14 @@
   "messageId": "1527837157245452469",
   "transactions": [
     {
+      "userId": "1509969106999443678",
+      "type": "🏛️ Argent Taxe",
+      "game": "",
+      "amount": 125,
+      "byId": "system",
+      "at": 1785279027581
+    },
+    {
       "byId": "casino",
       "at": 1785277445728,
       "userId": "1528200495389343784",
