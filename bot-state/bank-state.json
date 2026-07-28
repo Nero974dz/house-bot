@@ -25,7 +25,14 @@
     "1528200495389343784": 15250,
     "1530622536730152990": 500
   },
-  "deposits": {},
+  "deposits": {
+    "dep_1785277227152": {
+      "userId": "1528200495389343784",
+      "amount": 1000,
+      "status": "pending",
+      "createdAt": 1785277227152
+    }
+  },
   "richestMessageId": "1530832044978864255",
   "frozenAccounts": {},
   "retraits": {
