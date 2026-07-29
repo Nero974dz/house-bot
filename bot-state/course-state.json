@@ -1,4 +1,21 @@
 {
   "weekStart": "2026-07-27",
-  "lists": []
+  "lists": [
+    {
+      "id": "course_1785287024927_5162",
+      "authorId": "1173310115055665162",
+      "authorTag": "lilyrose.ita",
+      "items": [
+        {
+          "name": "test",
+          "price": 3.5,
+          "matched": false
+        }
+      ],
+      "total": 3.5,
+      "status": "pending",
+      "createdAt": 1785287024927,
+      "logMessageId": "1531829551502589973"
+    }
+  ]
 }
