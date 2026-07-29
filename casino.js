@@ -641,69 +641,76 @@ function scheduleBjTimeout(userId, respondTimeout) {
 /** Résout la partie (push/win/lose) et paie. Renvoie {embed, jackpotHit}. */
 async function settleBlackjack(client, userId) {
   const session = getBjSession(userId);
-  const { player, dealer, amount } = session;
-  // Victoire forcée (666 bot) : on force le dealer à bust en ajoutant des cartes
-  if (getForcedWin(userId)) {
-    clearForcedWin(userId);
-    while (handTotal(dealer) <= 21) dealer.push({ rank: "K", suit: "♠️" });
+  if (!session) return null;
+
+  try {
+    const { player, dealer, amount } = session;
+    // Victoire forcée (666 bot) : on force le dealer à bust en ajoutant des cartes
+    if (getForcedWin(userId)) {
+      clearForcedWin(userId);
+      while (handTotal(dealer) <= 21) dealer.push({ rank: "K", suit: "♠️" });
+    }
+    const playerTotal = handTotal(player);
+    const dealerTotal = handTotal(dealer);
+    const isNaturalBJ = player.length === 2 && playerTotal === 21;
+
+    let status;
+    let resultLine;
+    let payout = 0;
+
+    if (playerTotal > 21) {
+      status = "lose";
+      resultLine = `💥 Vous dépassez 21. Perdu (${formatEuro(amount)}).`;
+    } else if (isNaturalBJ && dealerTotal === 21) {
+      status = "push";
+      payout = amount;
+      resultLine = `🤝 Égalité (blackjack des deux côtés). Mise remboursée (${formatEuro(amount)}).`;
+    } else if (isNaturalBJ) {
+      payout = round2(amount * 2.2);
+      status = "win";
+      resultLine = `🎉 **Blackjack naturel !** Vous gagnez **${formatEuro(payout)}** (x2,2 — 6:5).`;
+    } else if (dealerTotal > 21) {
+      payout = round2(amount * 2);
+      status = "win";
+      resultLine = `✅ Le croupier dépasse 21. Vous gagnez **${formatEuro(payout)}**.`;
+    } else if (playerTotal > dealerTotal) {
+      payout = round2(amount * 2);
+      status = "win";
+      resultLine = `✅ Vous battez le croupier (${playerTotal} contre ${dealerTotal}). Vous gagnez **${formatEuro(payout)}**.`;
+    } else if (playerTotal === dealerTotal) {
+      status = "push";
+      payout = amount;
+      resultLine = `🤝 Égalité (${playerTotal} partout). Mise remboursée (${formatEuro(amount)}).`;
+    } else {
+      status = "lose";
+      resultLine = `❌ Le croupier gagne (${dealerTotal} contre ${playerTotal}). Perdu (${formatEuro(amount)}).`;
+    }
+
+    if (payout > 0) addFunds(userId, payout);
+
+    // Log IRF
+    const bjNet = payout > 0 ? round2(payout - amount) : -amount;
+    logIrfEvent({ userId, type: bjNet >= 0 ? "🏆 Victoire Casino" : "💀 Défaite Casino", game: "Blackjack", stake: amount, amount: bjNet, byId: "casino" });
+
+    const embed = buildBlackjackEmbed({ player, dealer, amount, hideDealer: false, status, resultLine });
+    embed.addFields({ name: "💰 Votre solde", value: formatEuro(getBalance(userId)), inline: true });
+
+    await updateCasinoMessage(client, loadState()).catch((err) => console.error("settleBlackjack updateCasinoMessage:", err));
+
+    await reportCasinoResult(client, {
+      userId,
+      game: "Blackjack",
+      stake: amount,
+      payout,
+      detail: `Vous : ${formatHand(player)} (${playerTotal}) — Croupier : ${formatHand(dealer)} (${dealerTotal})`,
+    }).catch((err) => console.error("settleBlackjack reportCasinoResult:", err));
+
+    return embed;
+  } finally {
+    // Toujours libérer la session, même si une erreur survient pendant le règlement,
+    // sinon le joueur reste bloqué avec un message "partie déjà en cours" jusqu'au timeout.
+    clearBjSession(userId);
   }
-  const playerTotal = handTotal(player);
-  const dealerTotal = handTotal(dealer);
-  const isNaturalBJ = player.length === 2 && playerTotal === 21;
-
-  let status;
-  let resultLine;
-  let payout = 0;
-
-  if (playerTotal > 21) {
-    status = "lose";
-    resultLine = `💥 Vous dépassez 21. Perdu (${formatEuro(amount)}).`;
-  } else if (isNaturalBJ && dealerTotal === 21) {
-    status = "push";
-    payout = amount;
-    resultLine = `🤝 Égalité (blackjack des deux côtés). Mise remboursée (${formatEuro(amount)}).`;
-  } else if (isNaturalBJ) {
-    payout = round2(amount * 2.2);
-    status = "win";
-    resultLine = `🎉 **Blackjack naturel !** Vous gagnez **${formatEuro(payout)}** (x2,2 — 6:5).`;
-  } else if (dealerTotal > 21) {
-    payout = round2(amount * 2);
-    status = "win";
-    resultLine = `✅ Le croupier dépasse 21. Vous gagnez **${formatEuro(payout)}**.`;
-  } else if (playerTotal > dealerTotal) {
-    payout = round2(amount * 2);
-    status = "win";
-    resultLine = `✅ Vous battez le croupier (${playerTotal} contre ${dealerTotal}). Vous gagnez **${formatEuro(payout)}**.`;
-  } else if (playerTotal === dealerTotal) {
-    status = "push";
-    payout = amount;
-    resultLine = `🤝 Égalité (${playerTotal} partout). Mise remboursée (${formatEuro(amount)}).`;
-  } else {
-    status = "lose";
-    resultLine = `❌ Le croupier gagne (${dealerTotal} contre ${playerTotal}). Perdu (${formatEuro(amount)}).`;
-  }
-
-  if (payout > 0) addFunds(userId, payout);
-
-  // Log IRF
-  const bjNet = payout > 0 ? round2(payout - amount) : -amount;
-  logIrfEvent({ userId, type: bjNet >= 0 ? "🏆 Victoire Casino" : "💀 Défaite Casino", game: "Blackjack", stake: amount, amount: bjNet, byId: "casino" });
-
-  clearBjSession(userId);
-  await updateCasinoMessage(client, loadState());
-
-  const embed = buildBlackjackEmbed({ player, dealer, amount, hideDealer: false, status, resultLine });
-  embed.addFields({ name: "💰 Votre solde", value: formatEuro(getBalance(userId)), inline: true });
-
-  await reportCasinoResult(client, {
-    userId,
-    game: "Blackjack",
-    stake: amount,
-    payout,
-    detail: `Vous : ${formatHand(player)} (${playerTotal}) — Croupier : ${formatHand(dealer)} (${dealerTotal})`,
-  });
-
-  return embed;
 }
 
 async function startBlackjack(interaction, client, amount) {
