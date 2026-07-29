@@ -13,9 +13,11 @@
         }
       ],
       "total": 3.5,
-      "status": "pending",
+      "status": "approved",
       "createdAt": 1785287024927,
-      "logMessageId": "1531829551502589973"
+      "logMessageId": "1531829551502589973",
+      "validatedAt": 1785287096340,
+      "validatorId": "1173310115055665162"
     }
   ]
 }
