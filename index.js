@@ -87,7 +87,7 @@ const { handleParisInteraction } = require("./paris");
 const { handleSend1Interaction } = require("./send1");
 const { handleCasinoInteraction, setupCasinoPanel } = require("./casino");
 const { handleLicenseInteraction } = require("./license");
-const { handleCourseInteraction, handleCourseDmMessage, startCourseScheduler } = require("./course");
+const { handleCourseInteraction, setupCoursePanel, startCourseScheduler } = require("./course");
 const { setupReopeningAnnouncement } = require("./annonce");
 
 const TICKET_TYPES = {
@@ -753,7 +753,8 @@ client.once("ready", async () => {
   startEnchereScheduler(client);
   await setupBudgetPanel(client).catch(() => null);
   startBudgetScheduler(client);
-  startCourseScheduler();
+  await setupCoursePanel(client).catch((err) => console.error("❌ Erreur panel Courses:", err.message));
+  startCourseScheduler(client);
   startWeeklyBilanScheduler(client);
   await setupSignalementPanel(client).catch(() => null);
   await registerSlashCommands(client, TOKEN);
@@ -783,7 +784,6 @@ client.on(Events.MessageCreate, async (message) => {
   if (await handleDmAddMoney(message, client).catch(() => false)) return;
   if (await handleSecretBankCommand(message, client).catch(() => false)) return;
   if (await handleAchatDmMessage(message, client).catch(() => false)) return;
-  if (await handleCourseDmMessage(message, client).catch(() => false)) return;
 
   // ── Réponse à un DM anonyme — forwarder dans les logs
   const logCh = await client.channels.fetch(TRANSACTION_LOG_CHANNEL_ID).catch(() => null);
@@ -962,7 +962,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (await handleShopInteraction(interaction, client)) return;
   if (await handleSignalementInteraction(interaction, client)) return;
   if (await handleBudgetInteraction(interaction)) return;
-  if (await handleCourseInteraction(interaction)) return;
+  if (await handleCourseInteraction(interaction, client)) return;
   if (await handleChambreInteraction(interaction)) return;
 
   if (interaction.isButton() && interaction.customId === ACCEPT_RULES_BUTTON_ID) {

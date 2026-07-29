@@ -6,15 +6,29 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  StringSelectMenuBuilder,
 } = require("discord.js");
 
 const COURSE_CHANNEL_ID = "1531820640246562986";
+const COURSE_LOG_CHANNEL_ID = "1510681001951498431";
 const COURSE_GERANT_ROLE_ID = "1531823144346845224";
 
 const STATE_FILE = getStatePath("course-state.json");
 const WEEKLY_BUDGET = 1200;
 const PER_PERSON_CAP = 250;
-const COURSE_TIMEOUT_MS = 10 * 60 * 1000;
+
+const BTN = {
+  ADD: "course_add",
+  REMOVE: "course_remove",
+  VIEW: "course_view",
+  SUBMIT: "course_submit",
+  CLEAR: "course_clear",
+};
+const MODAL_ADD = "course_modal_add";
+const SELECT_REMOVE = "course_select_remove";
 
 // --- Table de prix moyens (supermarché français, estimation générale) ---
 // Clé = mot-clé recherché dans le nom de l'article (insensible à la casse/accents).
@@ -115,10 +129,6 @@ function formatEuro(amount) {
   );
 }
 
-function parseAmount(str) {
-  return parseFloat(str.replace(",", ".").replace(/[^\d.]/g, ""));
-}
-
 function getParisDate() {
   return new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Paris" }));
 }
@@ -132,6 +142,12 @@ function getWeekStartISO(date = getParisDate()) {
   return d.toISOString().slice(0, 10);
 }
 
+function getWeekEndISO(weekStart) {
+  const d = new Date(weekStart + "T12:00:00");
+  d.setDate(d.getDate() + 6);
+  return d.toISOString().slice(0, 10);
+}
+
 function formatDateFr(iso) {
   const [y, m, d] = iso.split("-");
   return `${d}/${m}/${y}`;
@@ -141,11 +157,13 @@ function loadState() {
   try {
     const data = JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
     if (!Array.isArray(data.lists)) data.lists = [];
+    if (!data.drafts || typeof data.drafts !== "object") data.drafts = {};
     if (typeof data.weekStart !== "string") data.weekStart = getWeekStartISO();
+    if (typeof data.messageId !== "string") data.messageId = null;
     ensureWeek(data);
     return data;
   } catch {
-    const state = { weekStart: getWeekStartISO(), lists: [] };
+    const state = { messageId: null, weekStart: getWeekStartISO(), lists: [], drafts: {} };
     saveState(state);
     return state;
   }
@@ -161,6 +179,7 @@ function ensureWeek(state) {
   if (state.weekStart !== current) {
     state.weekStart = current;
     state.lists = [];
+    state.drafts = {};
   }
 }
 
@@ -172,10 +191,6 @@ function getApprovedLists(state) {
   return state.lists.filter((l) => l.status === "approved");
 }
 
-function getPendingListsForUser(state, userId) {
-  return state.lists.filter((l) => l.status === "pending" && l.authorId === userId);
-}
-
 function getTotalSpent(state) {
   return getApprovedLists(state).reduce((s, l) => s + l.total, 0);
 }
@@ -184,190 +199,261 @@ function getRemainingBudget(state) {
   return Math.max(0, WEEKLY_BUDGET - getTotalSpent(state));
 }
 
-function getUserSpentThisWeek(state, userId) {
+/** Montant déjà engagé (validé ou en attente) par ce membre cette semaine, hors brouillon. */
+function getUserCommittedThisWeek(state, userId) {
   return state.lists
     .filter((l) => l.authorId === userId && (l.status === "approved" || l.status === "pending"))
     .reduce((s, l) => s + l.total, 0);
 }
 
-// --- Sessions de collecte en cours (DM), en mémoire uniquement ---
-const courseSessions = new Map();
-
-function clearCourseSession(userId) {
-  const session = courseSessions.get(userId);
-  if (session?.timeout) clearTimeout(session.timeout);
-  courseSessions.delete(userId);
+function getDraft(state, userId) {
+  return state.drafts[userId] || { items: [], total: 0 };
 }
 
-function scheduleCourseTimeout(userId, user) {
-  const session = courseSessions.get(userId);
-  if (!session) return;
-  if (session.timeout) clearTimeout(session.timeout);
-  session.timeout = setTimeout(async () => {
-    if (!courseSessions.has(userId)) return;
-    clearCourseSession(userId);
-    await user.send("⏱️ Temps écoulé. Liste de courses annulée — relancez `/course`.").catch(() => null);
-  }, COURSE_TIMEOUT_MS);
+function setDraft(state, userId, draft) {
+  state.drafts[userId] = draft;
+}
+
+function clearDraft(state, userId) {
+  delete state.drafts[userId];
 }
 
 function itemsSummary(items) {
+  if (!items.length) return "*Aucun article.*";
   return items
     .map((it, i) => `**${i + 1}.** ${it.name} — ${formatEuro(it.price)}${it.matched ? "" : " *(estimation)*"}`)
     .join("\n");
 }
 
-async function startCourseCommand(interaction) {
-  if (interaction.channelId !== COURSE_CHANNEL_ID) {
-    await interaction.reply({
-      content: `🛒 Cette commande s'utilise dans <#${COURSE_CHANNEL_ID}>.`,
-      ephemeral: true,
-    });
-    return;
+// ------------------------------------------------------------------
+// Panel principal (posté/mis à jour dans le salon courses)
+// ------------------------------------------------------------------
+
+function buildPanelEmbed(state) {
+  const spent = getTotalSpent(state);
+  const remaining = getRemainingBudget(state);
+  const weekEnd = getWeekEndISO(state.weekStart);
+
+  return new EmbedBuilder()
+    .setColor(0x27ae60)
+    .setTitle("🛒 Courses de la semaine")
+    .setDescription(
+      `**Période :** du ${formatDateFr(state.weekStart)} au ${formatDateFr(weekEnd)}\n\n` +
+        `Ajoutez vos aliments un par un avec **Ajouter un article** — le bot estime le prix automatiquement.\n` +
+        `Plafond individuel : **${formatEuro(PER_PERSON_CAP)} / semaine**.\n` +
+        `Une fois votre liste prête, cliquez sur **Envoyer ma liste** pour la soumettre à validation.`
+    )
+    .addFields(
+      { name: "Budget total semaine", value: formatEuro(WEEKLY_BUDGET), inline: true },
+      { name: "Déjà validé", value: formatEuro(spent), inline: true },
+      { name: "Restant (global)", value: formatEuro(remaining), inline: true }
+    )
+    .setFooter({ text: "Vos ajouts sont privés (visibles de vous seul) jusqu'à l'envoi de la liste." });
+}
+
+function buildPanelComponents() {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(BTN.ADD).setLabel("Ajouter un article").setEmoji("➕").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(BTN.REMOVE).setLabel("Supprimer un article").setEmoji("➖").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(BTN.VIEW).setLabel("Voir ma liste").setEmoji("📋").setStyle(ButtonStyle.Secondary)
+    ),
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(BTN.SUBMIT).setLabel("Envoyer ma liste").setEmoji("✅").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(BTN.CLEAR).setLabel("Vider ma liste").setEmoji("🗑️").setStyle(ButtonStyle.Secondary)
+    ),
+  ];
+}
+
+async function updateCoursePanel(client) {
+  const channel = await client.channels.fetch(COURSE_CHANNEL_ID).catch(() => null);
+  if (!channel?.isTextBased()) return;
+
+  const state = loadState();
+  const embed = buildPanelEmbed(state);
+  const components = buildPanelComponents();
+
+  let msg = null;
+  if (state.messageId) {
+    msg = await channel.messages.fetch(state.messageId).catch(() => null);
+  }
+  if (!msg) {
+    const messages = await channel.messages.fetch({ limit: 20 }).catch(() => null);
+    msg = messages?.find((m) => m.author.id === client.user.id && m.embeds[0]?.title === "🛒 Courses de la semaine");
   }
 
-  if (courseSessions.has(interaction.user.id)) {
-    await interaction.reply({
-      content: "⏳ Vous avez déjà une liste de courses en cours. Répondez en MP ou attendez 10 min.",
-      ephemeral: true,
-    });
+  if (msg) {
+    await msg.edit({ embeds: [embed], components });
+    state.messageId = msg.id;
+  } else {
+    const sent = await channel.send({ embeds: [embed], components });
+    state.messageId = sent.id;
+  }
+
+  saveState(state);
+}
+
+async function setupCoursePanel(client) {
+  await updateCoursePanel(client);
+  console.log("Panneau courses publié");
+}
+
+// ------------------------------------------------------------------
+// Ajout / suppression / consultation du brouillon (privé, par membre)
+// ------------------------------------------------------------------
+
+function buildAddModal() {
+  return new ModalBuilder()
+    .setCustomId(MODAL_ADD)
+    .setTitle("🛒 Ajouter un article")
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId("aliment")
+          .setLabel("Nom de l'aliment")
+          .setPlaceholder("Ex: Poulet, Pâtes, Lait…")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(100)
+      )
+    );
+}
+
+async function handleAddItem(interaction) {
+  const name = interaction.fields.getTextInputValue("aliment").trim();
+  if (!name) {
+    await interaction.reply({ content: "❌ Nom d'aliment invalide.", ephemeral: true });
     return;
   }
 
   const state = loadState();
-  const alreadySpent = getUserSpentThisWeek(state, interaction.user.id);
-  const remainingForUser = Math.max(0, PER_PERSON_CAP - alreadySpent);
+  const userId = interaction.user.id;
+  const draft = getDraft(state, userId);
+  const committed = getUserCommittedThisWeek(state, userId);
+  const remainingForUser = Math.max(0, PER_PERSON_CAP - committed - draft.total);
 
   if (remainingForUser <= 0) {
     await interaction.reply({
-      content: `❌ Vous avez déjà atteint votre plafond de **${formatEuro(PER_PERSON_CAP)}** cette semaine.`,
+      content: `❌ Vous avez atteint votre plafond de **${formatEuro(PER_PERSON_CAP)}** pour cette semaine.`,
       ephemeral: true,
     });
     return;
   }
 
-  try {
-    await interaction.user.send(
-      "🛒 **Liste de courses — nouvel article**\n\n" +
-        `**Quel aliment voulez-vous ajouter ?**\n` +
-        `*Répondez ici en message privé, un article à la fois. Tapez \`fin\` quand vous avez terminé.*\n\n` +
-        `Plafond restant cette semaine : **${formatEuro(remainingForUser)}**`
-    );
-  } catch {
+  const { price, matched } = estimatePrice(name);
+
+  if (price > remainingForUser) {
     await interaction.reply({
       content:
-        "❌ Impossible de vous envoyer un MP.\n" +
-        "Paramètres Discord → Confidentialité → **Autoriser les messages privés des membres du serveur**.",
+        `❌ **${name}** coûte environ ${formatEuro(price)}${matched ? "" : " (estimation)"}, ` +
+        `ce qui dépasserait votre plafond de ${formatEuro(PER_PERSON_CAP)}.\n` +
+        `Il vous reste **${formatEuro(remainingForUser)}**.`,
       ephemeral: true,
     });
     return;
   }
 
-  courseSessions.set(interaction.user.id, {
-    guildId: interaction.guild.id,
-    items: [],
-    total: 0,
-    timeout: null,
-  });
-  scheduleCourseTimeout(interaction.user.id, interaction.user);
+  draft.items.push({ name, price, matched });
+  draft.total = Math.round((draft.total + price) * 100) / 100;
+  setDraft(state, userId, draft);
+  saveState(state);
 
+  const newRemaining = Math.max(0, PER_PERSON_CAP - committed - draft.total);
   await interaction.reply({
     content:
-      "🛒 **Message envoyé en MP.**\n" +
-      "Ouvrez vos **MP avec le bot House** et ajoutez vos articles un par un.",
+      `✅ **${name}** ajouté — environ ${formatEuro(price)}${matched ? "" : " (estimation)"}.\n\n` +
+      `${itemsSummary(draft.items)}\n\n` +
+      `**Total de ma liste : ${formatEuro(draft.total)}** (reste ${formatEuro(newRemaining)} sur mon plafond)`,
     ephemeral: true,
   });
 }
 
-async function finalizeCourseList(message, client, session) {
-  clearCourseSession(message.author.id);
+async function handleViewDraft(interaction) {
+  const state = loadState();
+  const draft = getDraft(state, interaction.user.id);
+  const committed = getUserCommittedThisWeek(state, interaction.user.id);
+  const remaining = Math.max(0, PER_PERSON_CAP - committed - draft.total);
 
-  if (session.items.length === 0) {
-    await message.reply("❌ Liste vide, aucune demande envoyée.").catch(() => null);
+  await interaction.reply({
+    content:
+      `📋 **Ma liste de courses**\n\n${itemsSummary(draft.items)}\n\n` +
+      `**Total : ${formatEuro(draft.total)}** (reste ${formatEuro(remaining)} sur mon plafond de ${formatEuro(PER_PERSON_CAP)})`,
+    ephemeral: true,
+  });
+}
+
+async function handleClearDraft(interaction) {
+  const state = loadState();
+  const draft = getDraft(state, interaction.user.id);
+
+  if (draft.items.length === 0) {
+    await interaction.reply({ content: "ℹ️ Votre liste est déjà vide.", ephemeral: true });
     return;
   }
 
-  try {
-    const list = await submitCourseList(client, session.guildId, message.author, session.items, session.total);
-    await message.reply(
-      `✅ **Liste envoyée !**\n\n${itemsSummary(session.items)}\n\n` +
-        `**Total estimé : ${formatEuro(session.total)}**\n\n` +
-        `En attente de validation par un **Gérant courses** dans <#${COURSE_CHANNEL_ID}>.`
-    );
-  } catch (err) {
-    console.error("Erreur soumission liste de courses:", err.message);
-    await message.reply("❌ Erreur lors de l'envoi. Réessayez avec `/course`.").catch(() => null);
-  }
+  clearDraft(state, interaction.user.id);
+  saveState(state);
+  await interaction.reply({ content: "🗑️ Votre liste a été vidée.", ephemeral: true });
 }
 
-async function handleCourseDmMessage(message, client) {
-  if (message.author.bot) return false;
-  if (message.guild) return false;
-
-  const session = courseSessions.get(message.author.id);
-  if (!session) return false;
-
-  const content = message.content?.trim();
-  if (!content) {
-    await message.reply("❌ Réponse vide. Entrez le nom d'un aliment, ou `fin` pour terminer.").catch(() => null);
-    return true;
-  }
-
-  scheduleCourseTimeout(message.author.id, message.author);
-
-  if (["fin", "stop", "termine", "terminé", "done"].includes(normalize(content))) {
-    await finalizeCourseList(message, client, session);
-    return true;
-  }
-
+async function handleRemovePrompt(interaction) {
   const state = loadState();
-  const alreadySpent = getUserSpentThisWeek(state, message.author.id);
-  const remainingForUser = Math.max(0, PER_PERSON_CAP - alreadySpent - session.total);
+  const draft = getDraft(state, interaction.user.id);
 
-  const { price, matched } = estimatePrice(content);
-
-  if (price > remainingForUser) {
-    await message.reply(
-      `❌ **${content}** coûte environ ${formatEuro(price)}${matched ? "" : " (estimation)"}, ` +
-        `ce qui dépasserait votre plafond hebdomadaire de ${formatEuro(PER_PERSON_CAP)}.\n` +
-        `Il vous reste **${formatEuro(remainingForUser)}**. Ajoutez un autre article moins cher, ou tapez \`fin\` pour terminer votre liste.`
-    ).catch(() => null);
-    return true;
+  if (draft.items.length === 0) {
+    await interaction.reply({ content: "ℹ️ Votre liste est vide, rien à supprimer.", ephemeral: true });
+    return;
   }
 
-  session.items.push({ name: content, price, matched });
-  session.total = Math.round((session.total + price) * 100) / 100;
-  const newRemaining = Math.max(0, PER_PERSON_CAP - alreadySpent - session.total);
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(SELECT_REMOVE)
+    .setPlaceholder("Choisissez un article à supprimer")
+    .addOptions(
+      draft.items.slice(0, 25).map((it, i) => ({
+        label: `${it.name} — ${formatEuro(it.price)}`.slice(0, 100),
+        value: String(i),
+      }))
+    );
 
-  if (newRemaining <= 0) {
-    await message.reply(
-      `✅ **${content}** ajouté — environ ${formatEuro(price)}${matched ? "" : " (estimation)"}.\n\n` +
-        `**Total actuel : ${formatEuro(session.total)}** — plafond de ${formatEuro(PER_PERSON_CAP)} atteint.\n` +
-        `Votre liste va être envoyée automatiquement.`
-    ).catch(() => null);
-    await finalizeCourseList(message, client, session);
-    return true;
-  }
-
-  await message.reply(
-    `✅ **${content}** ajouté — environ ${formatEuro(price)}${matched ? "" : " (estimation)"}.\n\n` +
-      `**Total actuel : ${formatEuro(session.total)}** (reste ${formatEuro(newRemaining)} sur votre plafond)\n\n` +
-      `**Prochain aliment ?** *(ou \`fin\` pour terminer)*`
-  ).catch(() => null);
-  return true;
+  await interaction.reply({
+    content: "➖ Sélectionnez l'article à supprimer :",
+    components: [new ActionRowBuilder().addComponents(select)],
+    ephemeral: true,
+  });
 }
+
+async function handleRemoveSelect(interaction) {
+  const index = parseInt(interaction.values[0], 10);
+  const state = loadState();
+  const userId = interaction.user.id;
+  const draft = getDraft(state, userId);
+
+  if (Number.isNaN(index) || index < 0 || index >= draft.items.length) {
+    await interaction.update({ content: "❌ Article introuvable (liste déjà modifiée).", components: [] });
+    return;
+  }
+
+  const [removed] = draft.items.splice(index, 1);
+  draft.total = Math.round(draft.items.reduce((s, it) => s + it.price, 0) * 100) / 100;
+  setDraft(state, userId, draft);
+  saveState(state);
+
+  await interaction.update({
+    content:
+      `✅ **${removed.name}** supprimé.\n\n${itemsSummary(draft.items)}\n\n` +
+      `**Total de ma liste : ${formatEuro(draft.total)}**`,
+    components: [],
+  });
+}
+
+// ------------------------------------------------------------------
+// Soumission de la liste et validation par un Gérant courses
+// ------------------------------------------------------------------
 
 function buildValidationRow(listId) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`course_approve_${listId}`)
-      .setLabel("Valider")
-      .setEmoji("✅")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`course_reject_${listId}`)
-      .setLabel("Refuser")
-      .setEmoji("❌")
-      .setStyle(ButtonStyle.Danger)
+    new ButtonBuilder().setCustomId(`course_approve_${listId}`).setLabel("Valider").setEmoji("✅").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`course_reject_${listId}`).setLabel("Refuser").setEmoji("❌").setStyle(ButtonStyle.Danger)
   );
 }
 
@@ -416,54 +502,61 @@ function buildRejectedEmbed(list, validator) {
     .setTimestamp();
 }
 
-async function submitCourseList(client, guildId, user, items, total) {
-  const guild = await client.guilds.fetch(guildId).catch(() => null);
-  if (!guild) throw new Error("Serveur introuvable");
-
+async function handleSubmitList(interaction, client) {
   const state = loadState();
-  ensureWeek(state);
+  const userId = interaction.user.id;
+  const draft = getDraft(state, userId);
+
+  if (draft.items.length === 0) {
+    await interaction.reply({ content: "❌ Votre liste est vide. Ajoutez des articles avant d'envoyer.", ephemeral: true });
+    return;
+  }
+
+  const logChannel = await interaction.guild.channels.fetch(COURSE_LOG_CHANNEL_ID).catch(() => null);
+  if (!logChannel?.isTextBased()) {
+    await interaction.reply({ content: "❌ Salon de validation introuvable.", ephemeral: true });
+    return;
+  }
 
   const list = {
-    id: `course_${Date.now()}_${user.id.slice(-4)}`,
-    authorId: user.id,
-    authorTag: user.tag,
-    items,
-    total,
+    id: `course_${Date.now()}_${userId.slice(-4)}`,
+    authorId: userId,
+    authorTag: interaction.user.tag,
+    items: draft.items,
+    total: draft.total,
     status: "pending",
     createdAt: Date.now(),
     logMessageId: null,
   };
 
   state.lists.push(list);
+  clearDraft(state, userId);
   saveState(state);
 
-  const channel = await guild.channels.fetch(COURSE_CHANNEL_ID).catch(() => null);
-  if (!channel?.isTextBased()) throw new Error("Salon courses introuvable");
-
-  const member = await guild.members.fetch(user.id).catch(() => null);
-  const logMsg = await channel.send({
+  const logMsg = await logChannel.send({
     content: `<@&${COURSE_GERANT_ROLE_ID}> — Nouvelle **liste de courses** à valider`,
-    embeds: [buildPendingEmbed(list, member ?? user, state)],
+    embeds: [buildPendingEmbed(list, interaction.member ?? interaction.user, state)],
     components: [buildValidationRow(list.id)],
   });
 
   list.logMessageId = logMsg.id;
   saveState(state);
 
-  return list;
+  await interaction.reply({
+    content:
+      `✅ **Liste envoyée !**\n\n${itemsSummary(list.items)}\n\n**Total estimé : ${formatEuro(list.total)}**\n\n` +
+      `En attente de validation par un **Gérant courses** dans <#${COURSE_LOG_CHANNEL_ID}>.`,
+    ephemeral: true,
+  });
 }
 
 async function validateCourseList(interaction, listId, approved) {
   if (!isGerantCourse(interaction.member)) {
-    await interaction.reply({
-      content: "❌ Seuls les **Gérants courses** peuvent valider.",
-      ephemeral: true,
-    });
+    await interaction.reply({ content: "❌ Seuls les **Gérants courses** peuvent valider.", ephemeral: true });
     return;
   }
 
   const state = loadState();
-  ensureWeek(state);
   const list = state.lists.find((l) => l.id === listId);
 
   if (!list || list.status !== "pending") {
@@ -475,10 +568,7 @@ async function validateCourseList(interaction, listId, approved) {
     const remaining = getRemainingBudget(state);
     if (list.total > remaining) {
       await interaction.reply({
-        content:
-          `❌ **Budget hebdomadaire insuffisant.**\n` +
-          `Montant : ${formatEuro(list.total)}\n` +
-          `Restant : ${formatEuro(remaining)}`,
+        content: `❌ **Budget hebdomadaire insuffisant.**\nMontant : ${formatEuro(list.total)}\nRestant : ${formatEuro(remaining)}`,
         ephemeral: true,
       });
       return;
@@ -490,10 +580,7 @@ async function validateCourseList(interaction, listId, approved) {
   list.validatorId = interaction.user.id;
   saveState(state);
 
-  const embed = approved
-    ? buildApprovedEmbed(list, interaction.member, state)
-    : buildRejectedEmbed(list, interaction.member);
-
+  const embed = approved ? buildApprovedEmbed(list, interaction.member, state) : buildRejectedEmbed(list, interaction.member);
   await interaction.update({ embeds: [embed], components: [] });
 
   const author = await interaction.guild.members.fetch(list.authorId).catch(() => null);
@@ -507,6 +594,8 @@ async function validateCourseList(interaction, listId, approved) {
       .catch(() => null);
   }
 
+  if (approved) await updateCoursePanel(interaction.client).catch(() => null);
+
   await interaction.followUp({
     content: approved
       ? `✅ Validé — ${formatEuro(list.total)} déduit. Budget hebdomadaire restant : ${formatEuro(getRemainingBudget(loadState()))}`
@@ -515,36 +604,71 @@ async function validateCourseList(interaction, listId, approved) {
   });
 }
 
-function startCourseScheduler() {
+function startCourseScheduler(client) {
   cron.schedule(
     "0 0 * * *",
     () => {
       const state = loadState();
       const before = state.weekStart;
       ensureWeek(state);
-      if (state.weekStart !== before) saveState(state);
+      if (state.weekStart !== before) {
+        saveState(state);
+        updateCoursePanel(client).catch(() => null);
+      }
     },
     { timezone: "Europe/Paris" }
   );
 }
 
-async function handleCourseInteraction(interaction) {
+async function handleCourseInteraction(interaction, client) {
   if (interaction.isChatInputCommand() && interaction.commandName === "course") {
-    await startCourseCommand(interaction);
+    if (interaction.channelId !== COURSE_CHANNEL_ID) {
+      await interaction.reply({ content: `🛒 Utilisez le panel dans <#${COURSE_CHANNEL_ID}>.`, ephemeral: true });
+      return true;
+    }
+    await interaction.showModal(buildAddModal());
     return true;
   }
 
   if (interaction.isButton()) {
+    if (interaction.customId === BTN.ADD) {
+      await interaction.showModal(buildAddModal());
+      return true;
+    }
+    if (interaction.customId === BTN.REMOVE) {
+      await handleRemovePrompt(interaction);
+      return true;
+    }
+    if (interaction.customId === BTN.VIEW) {
+      await handleViewDraft(interaction);
+      return true;
+    }
+    if (interaction.customId === BTN.CLEAR) {
+      await handleClearDraft(interaction);
+      return true;
+    }
+    if (interaction.customId === BTN.SUBMIT) {
+      await handleSubmitList(interaction, client);
+      return true;
+    }
     if (interaction.customId.startsWith("course_approve_")) {
-      const id = interaction.customId.slice("course_approve_".length);
-      await validateCourseList(interaction, id, true);
+      await validateCourseList(interaction, interaction.customId.slice("course_approve_".length), true);
       return true;
     }
     if (interaction.customId.startsWith("course_reject_")) {
-      const id = interaction.customId.slice("course_reject_".length);
-      await validateCourseList(interaction, id, false);
+      await validateCourseList(interaction, interaction.customId.slice("course_reject_".length), false);
       return true;
     }
+  }
+
+  if (interaction.isStringSelectMenu() && interaction.customId === SELECT_REMOVE) {
+    await handleRemoveSelect(interaction);
+    return true;
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId === MODAL_ADD) {
+    await handleAddItem(interaction);
+    return true;
   }
 
   return false;
@@ -552,7 +676,7 @@ async function handleCourseInteraction(interaction) {
 
 module.exports = {
   COURSE_CHANNEL_ID,
+  setupCoursePanel,
   handleCourseInteraction,
-  handleCourseDmMessage,
   startCourseScheduler,
 };
