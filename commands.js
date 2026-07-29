@@ -27,6 +27,10 @@ async function registerSlashCommands(client, token) {
       .setDescription("Demande d'achat d'un produit")
       .toJSON(),
     new SlashCommandBuilder()
+      .setName("course")
+      .setDescription("Faire sa liste de courses de la semaine (max 250€/personne)")
+      .toJSON(),
+    new SlashCommandBuilder()
       .setName("report")
       .setDescription("Signaler anonymement le comportement d'un membre")
       .toJSON(),
@@ -116,7 +120,7 @@ async function registerSlashCommands(client, token) {
       );
   }
   console.log(
-    "Commandes /achat, /report, /crédit, /mission, /chat, /correctif, /0, /bank, /addmoney, /delbank, /virement, /classement-setup, /pari-setup, /send1, /casino-setup, /license et /tablicense enregistrées"
+    "Commandes /achat, /course, /report, /crédit, /mission, /chat, /correctif, /0, /bank, /addmoney, /delbank, /virement, /classement-setup, /pari-setup, /send1, /casino-setup, /license et /tablicense enregistrées"
   );
 }
 
