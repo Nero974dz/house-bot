@@ -11,9 +11,11 @@
       "reason": "Comme ca",
       "authorId": "320348102055690241",
       "authorTag": "dp5p",
-      "status": "pending",
+      "status": "approved",
       "createdAt": 1785378801638,
-      "logMessageId": "1532214490622328983"
+      "logMessageId": "1532214490622328983",
+      "validatedAt": 1785379263565,
+      "validatorId": "1411724649036910673"
     }
   ]
 }
