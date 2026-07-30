@@ -2,5 +2,18 @@
   "messageId": "1510685400857972776",
   "weekStart": "2026-07-27",
   "totalBudget": 5000,
-  "expenses": []
+  "expenses": [
+    {
+      "id": "achat_1785378801638_0241",
+      "type": "achat",
+      "amount": 250,
+      "label": "Vetemet",
+      "reason": "Comme ca",
+      "authorId": "320348102055690241",
+      "authorTag": "dp5p",
+      "status": "pending",
+      "createdAt": 1785378801638,
+      "logMessageId": "1532214490622328983"
+    }
+  ]
 }
